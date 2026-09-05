@@ -1,26 +1,37 @@
 const crypto = require('crypto');
+const Razorpay = require('razorpay');
 const { query, withTransaction } = require('../config/db');
 const { logAudit } = require('./auditService');
 
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_mock_gada';
+const RAZORPAY_KEY_ID     = process.env.RAZORPAY_KEY_ID     || 'rzp_test_mock_gada';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'rzp_test_mock_secret';
+
+// Initialise Razorpay SDK (real API calls)
+const razorpay = new Razorpay({
+  key_id:     RAZORPAY_KEY_ID,
+  key_secret: RAZORPAY_KEY_SECRET,
+});
 
 /**
  * Initialize a Razorpay test order for an invoice
  */
 async function createRazorpayOrder(invoiceId, customerUser) {
   const invoices = await query(
-    `SELECT inv.*, q.quotation_number, c.company_name, c.email, c.phone
+    `SELECT inv.*, 
+            COALESCE(q.quotation_number, CONCAT('Q-', inv.quotation_id)) as quotation_number, 
+            COALESCE(c.company_name, 'Customer') as company_name, 
+            COALESCE(c.email, '') as email, 
+            COALESCE(c.phone, '') as phone
      FROM invoices inv
-     JOIN quotations q ON inv.quotation_id = q.id
-     JOIN customers c ON inv.customer_id = c.id
+     LEFT JOIN quotations q ON inv.quotation_id = q.id
+     LEFT JOIN customers c ON inv.customer_id = c.id
      WHERE inv.id = ?`,
     [invoiceId]
   );
   if (invoices.length === 0) throw new Error('Invoice not found');
   const inv = invoices[0];
 
-  if (customerUser && customerUser.customer_id && inv.customer_id !== customerUser.customer_id) {
+  if (customerUser && customerUser.customer_id && parseInt(inv.customer_id, 10) !== parseInt(customerUser.customer_id, 10)) {
     throw new Error('Unauthorized: You cannot pay another customer\'s invoice');
   }
 
@@ -28,24 +39,41 @@ async function createRazorpayOrder(invoiceId, customerUser) {
     throw new Error('This invoice has already been fully paid.');
   }
 
-  const amountInPaise = Math.round(parseFloat(inv.due_amount) * 100);
-  const orderReceipt = `rcpt_${inv.invoice_number}_${Date.now().toString().slice(-4)}`;
+  let billAmount = parseFloat(inv.due_amount);
+  if (!billAmount || billAmount <= 0) {
+    billAmount = parseFloat(inv.total_amount) || 100;
+  }
+  // Razorpay test mode accounts enforce a ₹5,00,000 (50,000,000 paise) maximum limit per order
+  const isTestKey = RAZORPAY_KEY_ID.startsWith('rzp_test');
+  const rawPaise = Math.round(billAmount * 100);
+  const amountInPaise = isTestKey ? Math.min(50000000, Math.max(100, rawPaise)) : Math.max(100, rawPaise);
+  const rawReceipt = `inv_${inv.invoice_number || inv.id}_${Date.now().toString().slice(-6)}`;
+  const orderReceipt = rawReceipt.slice(0, 40);
 
-  // Generate Razorpay test order ID
-  const orderId = `order_${crypto.randomBytes(8).toString('hex')}`;
+  // Create a REAL Razorpay order via the API
+  const rzpOrder = await razorpay.orders.create({
+    amount:   amountInPaise,
+    currency: 'INR',
+    receipt:  orderReceipt,
+    notes: {
+      invoice_number:   inv.invoice_number || `INV-${inv.id}`,
+      quotation_number: inv.quotation_number || '',
+      customer:         inv.company_name || 'Customer',
+    },
+  });
 
   return {
-    success: true,
-    invoiceId: inv.id,
-    invoiceNumber: inv.invoice_number,
+    success:         true,
+    invoiceId:       inv.id,
+    invoiceNumber:   inv.invoice_number,
     quotationNumber: inv.quotation_number,
-    orderId,
-    amount: amountInPaise,
-    currency: 'INR',
-    customerName: inv.company_name,
-    customerEmail: inv.email,
-    customerPhone: inv.phone,
-    razorpayKeyId: RAZORPAY_KEY_ID,
+    orderId:         rzpOrder.id,      // real Razorpay order ID
+    amount:          rzpOrder.amount,  // paise (as confirmed by Razorpay)
+    currency:        rzpOrder.currency,
+    customerName:    inv.company_name,
+    customerEmail:   inv.email,
+    customerPhone:   inv.phone,
+    razorpayKeyId:   RAZORPAY_KEY_ID,
   };
 }
 
@@ -64,8 +92,8 @@ async function verifyPaymentSignature({
     const [invoices] = await conn.execute(
       `SELECT inv.*, q.id as quote_id, q.quotation_number, c.id as cust_id, c.company_name 
        FROM invoices inv
-       JOIN quotations q ON inv.quotation_id = q.id
-       JOIN customers c ON inv.customer_id = c.id
+       LEFT JOIN quotations q ON inv.quotation_id = q.id
+       LEFT JOIN customers c ON inv.customer_id = c.id
        WHERE inv.id = ? FOR UPDATE`,
       [invoiceId]
     );
@@ -89,6 +117,8 @@ async function verifyPaymentSignature({
       throw new Error('Payment signature verification failed. Invalid signature received.');
     }
 
+    const paidAmount = parseFloat(inv.due_amount) > 0 ? inv.due_amount : (inv.total_amount || 0);
+
     // 3. Update Invoice to PAID
     await conn.execute(
       `UPDATE invoices 
@@ -97,13 +127,15 @@ async function verifyPaymentSignature({
       [invoiceId]
     );
 
-    // 4. Update Quotation to PAID
-    await conn.execute(
-      `UPDATE quotations 
-       SET status = 'PAID', last_activity_at = NOW() 
-       WHERE id = ?`,
-      [inv.quote_id]
-    );
+    // 4. Update Quotation to PAID (if linked)
+    if (inv.quote_id || inv.quotation_id) {
+      await conn.execute(
+        `UPDATE quotations 
+         SET status = 'PAID', last_activity_at = NOW() 
+         WHERE id = ?`,
+        [inv.quote_id || inv.quotation_id]
+      );
+    }
 
     // 5. Create Payment record
     const paymentNumber = `PAY-${Date.now().toString().slice(-6)}`;
@@ -114,9 +146,9 @@ async function verifyPaymentSignature({
       [
         paymentNumber,
         invoiceId,
-        inv.quote_id,
-        inv.cust_id,
-        inv.due_amount,
+        inv.quote_id || inv.quotation_id || null,
+        inv.cust_id || inv.customer_id || null,
+        paidAmount,
         razorpayOrderId,
         razorpayPaymentId,
         razorpaySignature || 'TEST_VERIFIED',
@@ -156,7 +188,7 @@ async function verifyPaymentSignature({
       success: true,
       paymentNumber,
       invoiceNumber: inv.invoice_number,
-      amount: inv.due_amount,
+      amount: paidAmount,
       status: 'PAID',
       paymentId: razorpayPaymentId,
       message: 'Payment verified successfully. Invoice status updated to PAID.',
@@ -185,21 +217,32 @@ async function createSubscriptionRazorpayOrder(planId, customerUser) {
   }
 
   const amountInPaise = Math.round(parseFloat(plan.price) * 100);
-  const orderId = `sub_order_${crypto.randomBytes(8).toString('hex')}`;
+  const orderReceipt  = `sub_${plan.id}_${Date.now().toString().slice(-6)}`;
+
+  // Create a REAL Razorpay order for subscription
+  const rzpOrder = await razorpay.orders.create({
+    amount:   amountInPaise,
+    currency: 'INR',
+    receipt:  orderReceipt,
+    notes: {
+      plan_name:        plan.plan_name,
+      billing_interval: plan.billing_interval,
+    },
+  });
 
   return {
-    success: true,
-    planId: plan.id,
-    planName: plan.plan_name,
-    productName: plan.product_name,
+    success:         true,
+    planId:          plan.id,
+    planName:        plan.plan_name,
+    productName:     plan.product_name,
     billingInterval: plan.billing_interval,
-    orderId,
-    amount: amountInPaise,
-    currency: 'INR',
-    customerName: customer ? customer.company_name : customerUser?.name || 'Customer',
-    customerEmail: customer ? customer.email : customerUser?.email || '',
-    customerPhone: customer ? customer.phone : '',
-    razorpayKeyId: RAZORPAY_KEY_ID,
+    orderId:         rzpOrder.id,
+    amount:          rzpOrder.amount,
+    currency:        rzpOrder.currency,
+    customerName:    customer ? customer.company_name : customerUser?.name || 'Customer',
+    customerEmail:   customer ? customer.email : customerUser?.email || '',
+    customerPhone:   customer ? customer.phone : '',
+    razorpayKeyId:   RAZORPAY_KEY_ID,
   };
 }
 

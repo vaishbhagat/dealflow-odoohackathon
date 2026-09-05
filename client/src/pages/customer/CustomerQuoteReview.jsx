@@ -114,43 +114,57 @@ export const CustomerQuoteReview = () => {
       setPaying(true);
 
       // 1. Find or create invoice for this quotation
+      let invId = null;
       const invRes = await api.get('/customer/invoices');
       let targetInv = invRes.invoices?.find(
         (i) => parseInt(i.quotation_id, 10) === parseInt(id, 10)
       );
 
-      let invId = targetInv?.id;
-      if (!invId) {
+      if (targetInv && targetInv.id) {
+        invId = targetInv.id;
+      } else {
         // Confirm quotation first to generate invoice
         const confRes = await api.post(`/customer/quotations/${id}/confirm`);
         if (!confRes.success) {
-          setToastMessage('Could not generate invoice. Please try again.');
+          setToastMessage(confRes.error || confRes.message || 'Could not generate invoice. Please try again.');
+          setPaying(false);
           return;
         }
         invId = confRes.invoiceId;
+
+        // Fallback: re-fetch invoices if invoiceId wasn't directly in response
+        if (!invId) {
+          const retryInv = await api.get('/customer/invoices');
+          const found = retryInv.invoices?.find(
+            (i) => parseInt(i.quotation_id, 10) === parseInt(id, 10)
+          );
+          invId = found?.id;
+        }
       }
 
       if (!invId) {
         setToastMessage('Invoice not found. Please contact support.');
+        setPaying(false);
         return;
       }
 
       // 2. Create Razorpay Order on backend
       const orderRes = await api.post('/payments/create-order', { invoiceId: invId });
       if (!orderRes.success && !orderRes.orderId) {
-        setToastMessage('Could not initialize payment. Please try again.');
+        setToastMessage(orderRes.error || 'Could not initialize payment. Please try again.');
+        setPaying(false);
         return;
       }
 
       // 3. Open Razorpay Checkout
-      const razorpayKey = orderRes.razorpayKeyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+      const razorpayKey = orderRes.razorpayKeyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TYIQZHTbJvKoGi';
 
       if (typeof window.Razorpay === 'function') {
         const options = {
           key: razorpayKey,
           amount: orderRes.amount,
           currency: orderRes.currency || 'INR',
-          name: 'Gada Electronics',
+          name: 'Gada Electronics Ltd.',
           description: `Payment for Quotation ${quotation.quotation_number}`,
           image: '/favicon.svg',
           order_id: orderRes.orderId,
@@ -169,7 +183,7 @@ export const CustomerQuoteReview = () => {
                 );
                 await loadQuotationDetail();
               } else {
-                setToastMessage('Payment verification failed. Please contact support.');
+                setToastMessage('Payment verification failed: ' + (verifyRes.error || 'Please contact support.'));
               }
             } catch (vErr) {
               setToastMessage('Payment verification error: ' + (vErr.error || vErr.message));
@@ -183,7 +197,7 @@ export const CustomerQuoteReview = () => {
             contact: orderRes.customerPhone || '9876543210',
           },
           theme: {
-            color: '#2563EB',
+            color: '#1d4ed8',
           },
           modal: {
             ondismiss: function () {
@@ -198,11 +212,10 @@ export const CustomerQuoteReview = () => {
           setPaying(false);
         });
         rzp.open();
-        // Don't set paying=false here — handled in handler/ondismiss
         return;
       } else {
         // Razorpay script not loaded fallback
-        setToastMessage('Razorpay is not available. Please refresh the page and try again.');
+        setToastMessage('Razorpay SDK not loaded. Please refresh the page and try again.');
         setPaying(false);
       }
     } catch (err) {

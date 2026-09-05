@@ -945,27 +945,46 @@ async function confirmCustomerQuotation(req, res) {
       [id]
     );
 
-    // Create Fulfillment Order (My Orders)
-    const fulfillmentNumber = `FO-${Math.floor(10000 + Math.random() * 90000)}`;
-    await query(
-      `INSERT INTO fulfillment_orders (fulfillment_number, quotation_id, customer_id, status, expected_delivery_date)
-       VALUES (?, ?, ?, 'PENDING', DATE_ADD(CURRENT_DATE, INTERVAL 7 DAY))`,
-      [fulfillmentNumber, id, customerId]
-    );
+    // Create Fulfillment Order (My Orders) if not already existing
+    let fulfillmentNumber;
+    const existingOrders = await query(`SELECT fulfillment_number FROM fulfillment_orders WHERE quotation_id = ?`, [id]);
+    if (existingOrders.length > 0) {
+      fulfillmentNumber = existingOrders[0].fulfillment_number;
+    } else {
+      fulfillmentNumber = `FO-${Math.floor(10000 + Math.random() * 90000)}`;
+      await query(
+        `INSERT INTO fulfillment_orders (fulfillment_number, quotation_id, customer_id, status, expected_delivery_date)
+         VALUES (?, ?, ?, 'PENDING', DATE_ADD(CURRENT_DATE, INTERVAL 7 DAY))`,
+        [fulfillmentNumber, id, customerId]
+      );
+    }
 
-    // Create Invoice (My Invoices)
-    const invoiceNumber = `INV-${Math.floor(10000 + Math.random() * 90000)}`;
-    await query(
-      `INSERT INTO invoices (invoice_number, quotation_id, customer_id, subtotal, discount_amount, tax_amount, total_amount, due_amount, payment_status, due_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UNPAID', DATE_ADD(CURRENT_DATE, INTERVAL 15 DAY))`,
-      [invoiceNumber, id, customerId, quote.subtotal, quote.total_discount, quote.tax_amount, quote.total_amount, quote.total_amount]
-    );
+    // Create or find Invoice (My Invoices)
+    let invoiceId;
+    let invoiceNumber;
+    const existingInvoices = await query(`SELECT id, invoice_number FROM invoices WHERE quotation_id = ?`, [id]);
+    if (existingInvoices.length > 0) {
+      invoiceId = existingInvoices[0].id;
+      invoiceNumber = existingInvoices[0].invoice_number;
+    } else {
+      invoiceNumber = `INV-${Math.floor(10000 + Math.random() * 90000)}`;
+      const subtotal = parseFloat(quote.subtotal || 0);
+      const discount = parseFloat(quote.total_discount || 0);
+      const tax = parseFloat(quote.tax_amount || 0);
+      const total = parseFloat(quote.total_amount || 0);
+      const invRes = await query(
+        `INSERT INTO invoices (invoice_number, quotation_id, customer_id, subtotal, discount_amount, tax_amount, total_amount, due_amount, payment_status, due_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UNPAID', DATE_ADD(CURRENT_DATE, INTERVAL 15 DAY))`,
+        [invoiceNumber, id, customerId, subtotal, discount, tax, total, total]
+      );
+      invoiceId = invRes.insertId;
+    }
 
     // Audit Log
     await query(
       `INSERT INTO audit_logs (quotation_id, user_id, user_role, action, new_value, reason)
        VALUES (?, ?, 'CUSTOMER', 'CUSTOMER_QUOTATION_CONFIRMED', ?, 'Customer officially confirmed quotation')`,
-      [id, req.user.id, JSON.stringify({ fulfillmentNumber, invoiceNumber })]
+      [id, req.user.id, JSON.stringify({ fulfillmentNumber, invoiceNumber, invoiceId })]
     );
 
     res.json({
@@ -973,6 +992,7 @@ async function confirmCustomerQuotation(req, res) {
       message: 'Quotation confirmed! Order and Invoice generated successfully.',
       fulfillmentNumber,
       invoiceNumber,
+      invoiceId,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
