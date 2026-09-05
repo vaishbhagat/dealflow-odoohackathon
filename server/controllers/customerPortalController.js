@@ -698,7 +698,8 @@ async function getCustomerQuotationById(req, res) {
        FROM quotations q
        JOIN customers c ON q.customer_id = c.id
        LEFT JOIN users rep ON q.salesperson_id = rep.id
-       LEFT JOIN users mgr ON rep.sales_team_id = mgr.id
+       LEFT JOIN sales_teams st ON rep.sales_team_id = st.id
+       LEFT JOIN users mgr ON st.manager_id = mgr.id
        WHERE q.id = ? AND q.customer_id = ?`,
       [id, customerId]
     );

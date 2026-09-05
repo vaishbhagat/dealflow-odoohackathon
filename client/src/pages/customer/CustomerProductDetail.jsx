@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { 
   ShoppingCart, ArrowLeft, CheckCircle, ShieldCheck, Truck, RefreshCcw,
-  Check, ChevronRight, FileText, Plus, Minus
+  Check, ChevronRight, FileText, Plus, Minus, LogIn
 } from 'lucide-react';
 
 export const CustomerProductDetail = () => {
   const { id } = useParams();
+  const { user, isGuest } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -15,6 +17,7 @@ export const CustomerProductDetail = () => {
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
   const navigate = useNavigate();
+  const isGuestUser = isGuest || user?.role === 'GUEST';
 
   useEffect(() => {
     fetchProductDetail();
@@ -37,6 +40,11 @@ export const CustomerProductDetail = () => {
   };
 
   const handleAddToCart = async () => {
+    // Redirect guests to login
+    if (isGuestUser) {
+      navigate('/login');
+      return;
+    }
     try {
       setAdding(true);
       const res = await api.post('/customer/cart', {
@@ -49,7 +57,7 @@ export const CustomerProductDetail = () => {
         setTimeout(() => setAdded(false), 2500);
       }
     } catch (err) {
-      alert('Error adding item to cart: ' + err.message);
+      console.error('Error adding item to cart:', err.message);
     } finally {
       setAdding(false);
     }

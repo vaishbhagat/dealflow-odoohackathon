@@ -112,35 +112,101 @@ export const CustomerQuoteReview = () => {
   const handlePayNow = async () => {
     try {
       setPaying(true);
-      // Fetch customer invoices to find related invoice
+
+      // 1. Find or create invoice for this quotation
       const invRes = await api.get('/customer/invoices');
-      let targetInv = invRes.invoices?.find((i) => parseInt(i.quotation_id, 10) === parseInt(id, 10));
+      let targetInv = invRes.invoices?.find(
+        (i) => parseInt(i.quotation_id, 10) === parseInt(id, 10)
+      );
 
       let invId = targetInv?.id;
       if (!invId) {
-        // If not found, trigger confirm to generate invoice first
+        // Confirm quotation first to generate invoice
         const confRes = await api.post(`/customer/quotations/${id}/confirm`);
+        if (!confRes.success) {
+          setToastMessage('Could not generate invoice. Please try again.');
+          return;
+        }
         invId = confRes.invoiceId;
       }
 
-      // Razorpay Test Mode Order & Verification
+      if (!invId) {
+        setToastMessage('Invoice not found. Please contact support.');
+        return;
+      }
+
+      // 2. Create Razorpay Order on backend
       const orderRes = await api.post('/payments/create-order', { invoiceId: invId });
-      const testPaymentId = `pay_test_${Date.now().toString().slice(-8)}`;
+      if (!orderRes.success && !orderRes.orderId) {
+        setToastMessage('Could not initialize payment. Please try again.');
+        return;
+      }
 
-      const verifyRes = await api.post('/payments/verify', {
-        invoiceId: invId,
-        razorpayOrderId: orderRes.orderId,
-        razorpayPaymentId: testPaymentId,
-        razorpaySignature: 'test_valid_signature_gada_electronics',
-      });
+      // 3. Open Razorpay Checkout
+      const razorpayKey = orderRes.razorpayKeyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
 
-      if (verifyRes.success) {
-        setToastMessage(`Payment Verified! ID: ${testPaymentId} Amount: ₹${parseFloat(quotation.total_amount).toLocaleString('en-IN')}`);
-        await loadQuotationDetail();
+      if (typeof window.Razorpay === 'function') {
+        const options = {
+          key: razorpayKey,
+          amount: orderRes.amount,
+          currency: orderRes.currency || 'INR',
+          name: 'Gada Electronics',
+          description: `Payment for Quotation ${quotation.quotation_number}`,
+          image: '/favicon.svg',
+          order_id: orderRes.orderId,
+          handler: async function (response) {
+            try {
+              // 4. Verify payment on backend
+              const verifyRes = await api.post('/payments/verify', {
+                invoiceId: invId,
+                razorpayOrderId: response.razorpay_order_id || orderRes.orderId,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              });
+              if (verifyRes.success) {
+                setToastMessage(
+                  `✅ Payment Successful! ID: ${response.razorpay_payment_id} • Amount: ₹${parseFloat(quotation.total_amount).toLocaleString('en-IN')}`
+                );
+                await loadQuotationDetail();
+              } else {
+                setToastMessage('Payment verification failed. Please contact support.');
+              }
+            } catch (vErr) {
+              setToastMessage('Payment verification error: ' + (vErr.error || vErr.message));
+            } finally {
+              setPaying(false);
+            }
+          },
+          prefill: {
+            name: orderRes.customerName || quotation.contact_person || 'Customer',
+            email: orderRes.customerEmail || quotation.customer_email || '',
+            contact: orderRes.customerPhone || '9876543210',
+          },
+          theme: {
+            color: '#2563EB',
+          },
+          modal: {
+            ondismiss: function () {
+              setPaying(false);
+            },
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', function (resp) {
+          setToastMessage('Payment failed: ' + (resp.error?.description || 'Cancelled or declined.'));
+          setPaying(false);
+        });
+        rzp.open();
+        // Don't set paying=false here — handled in handler/ondismiss
+        return;
+      } else {
+        // Razorpay script not loaded fallback
+        setToastMessage('Razorpay is not available. Please refresh the page and try again.');
+        setPaying(false);
       }
     } catch (err) {
-      alert('Payment execution failed: ' + err.message);
-    } finally {
+      setToastMessage('Payment error: ' + (err.error || err.message || 'Unknown error.'));
       setPaying(false);
     }
   };

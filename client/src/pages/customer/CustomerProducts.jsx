@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import Pagination from '../../components/common/Pagination';
 import {
-  Search, ShoppingCart, Eye, Tag, ArrowUpDown, Check, Percent
+  Search, ShoppingCart, Eye, Tag, ArrowUpDown, Check, Percent, LogIn
 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 12;
 
 export const CustomerProducts = () => {
+  const { user, isGuest } = useAuth();
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,6 +22,7 @@ export const CustomerProducts = () => {
   const [customerTier, setCustomerTier] = useState('GOLD');
   const [addedItems, setAddedItems] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
+  const isGuestUser = isGuest || user?.role === 'GUEST';
 
   const categories = [
     'All', 'Laptops', 'Smartphones', 'Smart TVs', 'Refrigerators',
@@ -61,15 +65,22 @@ export const CustomerProducts = () => {
   };
 
   const handleAddToCart = async (product) => {
+    // Guest users must log in before adding to cart
+    if (isGuestUser) {
+      navigate('/login');
+      return;
+    }
     try {
       setAddedItems((prev) => ({ ...prev, [product.id]: 'adding' }));
       const res = await api.post('/customer/cart', { productId: product.id, quantity: 1 });
       if (res.success) {
         setAddedItems((prev) => ({ ...prev, [product.id]: 'added' }));
         setTimeout(() => setAddedItems((prev) => ({ ...prev, [product.id]: null })), 2000);
+      } else {
+        setAddedItems((prev) => ({ ...prev, [product.id]: null }));
       }
     } catch (err) {
-      alert('Error adding item to cart: ' + err.message);
+      console.error('Error adding item to cart:', err.message);
       setAddedItems((prev) => ({ ...prev, [product.id]: null }));
     }
   };
@@ -269,11 +280,15 @@ export const CustomerProducts = () => {
                         className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                           isAdded
                             ? 'bg-emerald-600 text-white'
+                            : isGuestUser
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
                             : 'bg-blue-600 hover:bg-blue-700 text-white'
                         }`}
                       >
                         {isAdded ? (
                           <><Check className="w-3.5 h-3.5" /><span>Added!</span></>
+                        ) : isGuestUser ? (
+                          <><LogIn className="w-3.5 h-3.5" /><span>Sign In to Buy</span></>
                         ) : (
                           <><ShoppingCart className="w-3.5 h-3.5" /><span>Add to Cart</span></>
                         )}

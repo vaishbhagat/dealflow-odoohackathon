@@ -230,11 +230,19 @@ export const CustomerCart = () => {
               <div className="space-y-3 text-xs border-b border-slate-100 pb-4">
                 <div className="flex items-center justify-between text-slate-600">
                   <span>Subtotal ({summary.itemCount} items)</span>
-                  <span className="font-semibold text-slate-900">₹{summary.subtotal.toLocaleString('en-IN')}</span>
+                  <span className="font-semibold text-slate-900">₹{summary.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600">
-                  <span>Estimated Tax (GST 18%)</span>
-                  <span className="font-semibold text-slate-900">₹{summary.taxAmount.toLocaleString('en-IN')}</span>
+                  <span>CGST (50% of GST)</span>
+                  <span className="font-semibold text-slate-900">₹{(summary.taxAmount / 2).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>SGST (50% of GST)</span>
+                  <span className="font-semibold text-slate-900">₹{(summary.taxAmount / 2).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-500 text-[11px] border-t border-slate-100 pt-2">
+                  <span>Total GST</span>
+                  <span className="font-semibold text-slate-700">₹{summary.taxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
 
