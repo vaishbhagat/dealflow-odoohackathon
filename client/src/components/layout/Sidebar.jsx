@@ -18,6 +18,8 @@ import {
   Warehouse,
   Flame,
   Network,
+  MessageSquare,
+  Bell,
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -113,7 +115,7 @@ export const Sidebar = () => {
                 </NavLink>
                 <NavLink to="/sales/products" className={navItemClass}>
                   <ShoppingBag className="w-4 h-4 text-indigo-600" />
-                  <span>Product Catalogue</span>
+                  <span>Rapid Quote Builder</span>
                 </NavLink>
                 <NavLink to="/sales/quotations" className={navItemClass}>
                   <FileText className="w-4 h-4 text-emerald-600" />
@@ -126,6 +128,23 @@ export const Sidebar = () => {
                 <NavLink to="/sales/customers" className={navItemClass}>
                   <Users className="w-4 h-4 text-cyan-600" />
                   <span>B2B Customers</span>
+                </NavLink>
+
+                {/* Sales Rep exclusive tools */}
+                <div className="pt-2 pb-0.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">My Rep Tools</p>
+                </div>
+                <NavLink to="/sales/negotiations" className={navItemClass}>
+                  <MessageSquare className="w-4 h-4 text-amber-600" />
+                  <span>Negotiations Inbox</span>
+                </NavLink>
+                <NavLink to="/sales/approvals" className={navItemClass}>
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  <span>Approval Tracker</span>
+                </NavLink>
+                <NavLink to="/sales/follow-ups" className={navItemClass}>
+                  <Bell className="w-4 h-4 text-rose-500" />
+                  <span>Follow-Up Tasks</span>
                 </NavLink>
               </nav>
             </div>
@@ -195,6 +214,10 @@ export const Sidebar = () => {
                   Platform Admin
                 </p>
                 <nav className="space-y-1">
+                  <NavLink to="/admin/dashboard" className={navItemClass}>
+                    <LayoutDashboard className="w-4 h-4 text-purple-600" />
+                    <span>Admin Overview</span>
+                  </NavLink>
                   <NavLink to="/admin/products" className={navItemClass}>
                     <ShoppingBag className="w-4 h-4 text-blue-600" />
                     <span>Product Catalogue</span>

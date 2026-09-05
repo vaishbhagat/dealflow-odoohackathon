@@ -5,61 +5,100 @@ const { query } = require('../config/db');
  */
 async function getDashboardMetrics(req, res) {
   try {
-    // 1. Overall Revenue from PAID Invoices
-    const [rev] = await query(
-      `SELECT COALESCE(SUM(amount), 0) as total_revenue, COUNT(*) as paid_transactions 
-       FROM payments WHERE status = 'SUCCESS'`
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const isSalesRep = userRole === 'SALES_REP';
+
+    // Build WHERE clause — SALES_REP sees only their own quotes, others see all
+    const quoteWhere = isSalesRep ? 'WHERE q.salesperson_id = ?' : '';
+    const quoteParams = isSalesRep ? [userId] : [];
+
+    // 1. Overall Revenue from PAID Invoices (scoped for rep)
+    const revRows = await query(
+      isSalesRep
+        ? `SELECT COALESCE(SUM(p.amount), 0) as total_revenue, COUNT(*) as paid_transactions
+           FROM payments p
+           JOIN invoices i ON p.invoice_id = i.id
+           JOIN quotations q ON i.quotation_id = q.id
+           WHERE p.status = 'SUCCESS' AND q.salesperson_id = ?`
+        : `SELECT COALESCE(SUM(amount), 0) as total_revenue, COUNT(*) as paid_transactions
+           FROM payments WHERE status = 'SUCCESS'`,
+      quoteParams
     );
+    const rev = revRows[0] || { total_revenue: 0, paid_transactions: 0 };
 
     // 2. Pipeline Quotation Metrics
-    const [quotes] = await query(
+    const quoteRows = await query(
       `SELECT 
          COUNT(*) as total_quotes,
-         COALESCE(SUM(total_amount), 0) as pipeline_value,
-         COALESCE(AVG(total_discount / NULLIF(subtotal, 0) * 100), 0) as average_discount_pct,
-         COALESCE(AVG(margin_pct), 0) as average_margin_pct,
-         SUM(CASE WHEN status IN ('PAID', 'COMPLETED') THEN 1 ELSE 0 END) as won_quotes,
-         SUM(CASE WHEN status = 'REJECTED' THEN 1 ELSE 0 END) as lost_quotes,
-         SUM(CASE WHEN status = 'PENDING_APPROVAL' THEN 1 ELSE 0 END) as pending_approval_quotes
-       FROM quotations`
+         COALESCE(SUM(q.total_amount), 0) as pipeline_value,
+         COALESCE(AVG(CASE WHEN q.subtotal > 0 THEN q.total_discount / q.subtotal * 100 ELSE 0 END), 0) as average_discount_pct,
+         COALESCE(AVG(q.margin_pct), 0) as average_margin_pct,
+         COALESCE(SUM(CASE WHEN q.status IN ('PAID', 'COMPLETED', 'INVOICED') THEN q.total_amount ELSE 0 END), 0) as won_revenue,
+         SUM(CASE WHEN q.status IN ('PAID', 'COMPLETED', 'INVOICED') THEN 1 ELSE 0 END) as won_quotes,
+         SUM(CASE WHEN q.status = 'REJECTED' THEN 1 ELSE 0 END) as lost_quotes,
+         SUM(CASE WHEN q.status = 'PENDING_APPROVAL' THEN 1 ELSE 0 END) as pending_approval_quotes
+       FROM quotations q ${quoteWhere}`,
+      quoteParams
     );
+    const quotes = quoteRows[0] || {};
 
-    const totalDeals = parseInt(quotes[0].total_quotes, 10);
-    const wonDeals = parseInt(quotes[0].won_quotes, 10);
-    const winRatePct = totalDeals > 0 ? (wonDeals / totalDeals) * 100 : 0;
+    const totalDeals = parseInt(quotes.total_quotes || 0, 10);
+    const wonDeals = parseInt(quotes.won_quotes || 0, 10);
+    const lostDeals = parseInt(quotes.lost_quotes || 0, 10);
+    const closedDeals = wonDeals + lostDeals;
+    const winRatePct = closedDeals > 0 ? (wonDeals / closedDeals) * 100 : (totalDeals > 0 ? 100 : 0);
+
+    // Use won_revenue if actual payment revenue is 0 (seed data may not have payments yet)
+    const totalRevenue = parseFloat(rev.total_revenue || 0);
+    const wonRevenue = parseFloat(quotes.won_revenue || 0);
+    const displayRevenue = totalRevenue > 0 ? totalRevenue : wonRevenue;
 
     // 3. Stage breakdown
     const stageDistribution = await query(
-      `SELECT status, COUNT(*) as count, COALESCE(SUM(total_amount), 0) as value 
-       FROM quotations GROUP BY status ORDER BY count DESC`
+      `SELECT q.status, COUNT(*) as count, COALESCE(SUM(q.total_amount), 0) as value 
+       FROM quotations q ${quoteWhere} GROUP BY q.status ORDER BY count DESC`,
+      quoteParams
     );
 
     // 4. Deal Health breakdown
-    const [health] = await query(
-      `SELECT 
-         COALESCE(AVG(health_score), 100) as avg_health,
-         SUM(CASE WHEN status = 'HEALTHY' THEN 1 ELSE 0 END) as healthy,
-         SUM(CASE WHEN status = 'AT_RISK' THEN 1 ELSE 0 END) as at_risk,
-         SUM(CASE WHEN status = 'CRITICAL' THEN 1 ELSE 0 END) as critical
-       FROM deal_health`
+    const healthRows = await query(
+      isSalesRep
+        ? `SELECT 
+             COALESCE(AVG(dh.health_score), 100) as avg_health,
+             SUM(CASE WHEN dh.status = 'HEALTHY' THEN 1 ELSE 0 END) as healthy,
+             SUM(CASE WHEN dh.status = 'AT_RISK' THEN 1 ELSE 0 END) as at_risk,
+             SUM(CASE WHEN dh.status = 'CRITICAL' THEN 1 ELSE 0 END) as critical
+           FROM deal_health dh
+           JOIN quotations q ON dh.quotation_id = q.id
+           WHERE q.salesperson_id = ?`
+        : `SELECT 
+             COALESCE(AVG(health_score), 100) as avg_health,
+             SUM(CASE WHEN status = 'HEALTHY' THEN 1 ELSE 0 END) as healthy,
+             SUM(CASE WHEN status = 'AT_RISK' THEN 1 ELSE 0 END) as at_risk,
+             SUM(CASE WHEN status = 'CRITICAL' THEN 1 ELSE 0 END) as critical
+           FROM deal_health`,
+      quoteParams
     );
+    const health = healthRows[0] || { avg_health: 100, healthy: 0, at_risk: 0, critical: 0 };
 
     res.json({
       success: true,
       metrics: {
-        totalRevenue: parseFloat(rev[0].total_revenue),
-        pipelineValue: parseFloat(quotes[0].pipeline_value),
+        totalRevenue: displayRevenue,
+        pipelineValue: parseFloat(quotes.pipeline_value || 0),
         totalQuotes: totalDeals,
         wonQuotes: wonDeals,
         winRatePct: Math.round(winRatePct * 10) / 10,
-        averageDiscountPct: Math.round(parseFloat(quotes[0].average_discount_pct) * 10) / 10,
-        averageMarginPct: Math.round(parseFloat(quotes[0].average_margin_pct) * 10) / 10,
-        pendingApprovalCount: parseInt(quotes[0].pending_approval_quotes, 10),
-        dealHealthSummary: health[0],
+        averageDiscountPct: Math.round(parseFloat(quotes.average_discount_pct || 0) * 10) / 10,
+        averageMarginPct: Math.round(parseFloat(quotes.average_margin_pct || 0) * 10) / 10,
+        pendingApprovalCount: parseInt(quotes.pending_approval_quotes || 0, 10),
+        dealHealthSummary: health,
         stageDistribution,
       },
     });
   } catch (error) {
+    console.error('Dashboard metrics error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

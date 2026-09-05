@@ -15,6 +15,11 @@ import SalesDashboard from './pages/sales/SalesDashboard';
 import QuotationsList from './pages/sales/QuotationsList';
 import QuotationDetail from './pages/sales/QuotationDetail';
 import PipelineKanban from './pages/sales/PipelineKanban';
+import NegotiationsInbox from './pages/sales/NegotiationsInbox';
+import ApprovalTracker from './pages/sales/ApprovalTracker';
+import FollowUpsList from './pages/sales/FollowUpsList';
+import RepProductCatalog from './pages/sales/RepProductCatalog';
+import CustomersView from './pages/sales/CustomersView';
 
 import ApprovalsQueue from './pages/manager/ApprovalsQueue';
 import DealHealthView from './pages/manager/DealHealthView';
@@ -37,6 +42,7 @@ import CustomerNotifications from './pages/customer/CustomerNotifications';
 import CustomerProfile from './pages/customer/CustomerProfile';
 
 // Admin Pages
+import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminProductsCatalog from './pages/admin/AdminProductsCatalog';
 import AdminPriceLists from './pages/admin/AdminPriceLists';
 import DiscountRules from './pages/admin/DiscountRules';
@@ -135,12 +141,36 @@ export default function App() {
               </AppLayout>
             }
           />
+          <Route
+            path="/sales/negotiations"
+            element={
+              <AppLayout>
+                <NegotiationsInbox />
+              </AppLayout>
+            }
+          />
+          <Route
+            path="/sales/approvals"
+            element={
+              <AppLayout>
+                <ApprovalTracker />
+              </AppLayout>
+            }
+          />
+          <Route
+            path="/sales/follow-ups"
+            element={
+              <AppLayout>
+                <FollowUpsList />
+              </AppLayout>
+            }
+          />
 
           <Route
             path="/sales/products"
             element={
               <AppLayout>
-                <CustomerProducts />
+                <RepProductCatalog />
               </AppLayout>
             }
           />
@@ -148,7 +178,7 @@ export default function App() {
             path="/sales/customers"
             element={
               <AppLayout>
-                <QuotationsList />
+                <CustomersView />
               </AppLayout>
             }
           />
@@ -344,7 +374,7 @@ export default function App() {
             path="/admin/dashboard"
             element={
               <AppLayout>
-                <UsersManagement />
+                <AdminDashboard />
               </AppLayout>
             }
           />

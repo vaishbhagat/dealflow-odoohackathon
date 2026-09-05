@@ -138,8 +138,54 @@ async function getQuotationById(req, res) {
     quotation.invoice = invoices.length > 0 ? invoices[0] : null;
 
     // Associated Fulfillment order if exists
-    const fulfillments = await query(`SELECT * FROM fulfillment_orders WHERE quotation_id = ?`, [id]);
-    quotation.fulfillmentOrder = fulfillments.length > 0 ? fulfillments[0] : null;
+    const fulfillments = await query(
+      `SELECT fo.*, c.company_name as customer_name
+       FROM fulfillment_orders fo
+       LEFT JOIN customers c ON fo.customer_id = c.id
+       WHERE fo.quotation_id = ?
+       ORDER BY fo.created_at DESC`,
+      [id]
+    );
+    if (fulfillments.length > 0) {
+      const fo = fulfillments[0];
+      const foItems = await query(
+        `SELECT fi.*, p.name as product_name, p.sku, w.name as warehouse_name, w.location as warehouse_location
+         FROM fulfillment_items fi
+         JOIN products p ON fi.product_id = p.id
+         JOIN warehouses w ON fi.warehouse_id = w.id
+         WHERE fi.fulfillment_order_id = ?
+         ORDER BY fi.shipment_batch ASC, fi.id ASC`,
+        [fo.id]
+      );
+      fo.items = foItems;
+      quotation.fulfillmentOrder = fo;
+    } else {
+      quotation.fulfillmentOrder = null;
+    }
+
+    // Associated Negotiations & Negotiation Comments
+    const negotiations = await query(
+      `SELECT n.*, u.name as salesperson_name, c.company_name as customer_name
+       FROM negotiations n
+       LEFT JOIN users u ON n.salesperson_id = u.id
+       LEFT JOIN customers c ON n.customer_id = c.id
+       WHERE n.quotation_id = ?
+       ORDER BY n.created_at DESC`,
+      [id]
+    );
+    quotation.negotiations = negotiations;
+
+    const comments = await query(
+      `SELECT nc.*, u.name as author_name, u.role as author_role, p.name as product_name
+       FROM negotiation_comments nc
+       LEFT JOIN users u ON nc.user_id = u.id
+       LEFT JOIN quotation_items qi ON nc.quotation_item_id = qi.id
+       LEFT JOIN products p ON qi.product_id = p.id
+       WHERE nc.quotation_id = ?
+       ORDER BY nc.created_at ASC`,
+      [id]
+    );
+    quotation.negotiationComments = comments;
 
     res.json({ success: true, quotation });
   } catch (error) {
@@ -153,7 +199,7 @@ async function getQuotationById(req, res) {
  */
 async function createQuotation(req, res) {
   try {
-    const { customerId, notes, validDays = 14 } = req.body;
+    const { customerId, notes, validDays = 14, items } = req.body;
     let salespersonId = req.user.role === 'SALES_REP' ? req.user.id : (req.body.salespersonId || req.user.id);
 
     if (!customerId) {
@@ -179,22 +225,52 @@ async function createQuotation(req, res) {
 
     const quotationId = result.insertId;
 
+    const itemArray = Array.isArray(items) ? items : (items ? [items] : []);
+    if (itemArray.length > 0) {
+      for (const item of itemArray) {
+        const { productId, variantId, quantity = 1, discountPct = 0, billingInterval = 'ONE_TIME' } = item;
+        const products = await query(`SELECT * FROM products WHERE id = ?`, [productId]);
+        if (products.length > 0) {
+          const product = products[0];
+          let unitPrice = parseFloat(product.selling_price);
+          if (variantId) {
+            const variants = await query(`SELECT price_delta FROM product_variants WHERE id = ?`, [variantId]);
+            if (variants.length > 0) {
+              unitPrice += parseFloat(variants[0].price_delta || 0);
+            }
+          }
+          const costPrice = parseFloat(product.cost_price);
+          const taxPct = parseFloat(product.tax_percentage || 18.0);
+          const itemType = product.product_type;
+
+          await query(
+            `INSERT INTO quotation_items 
+             (quotation_id, product_id, variant_id, item_type, quantity, unit_price, cost_price, discount_pct, tax_pct, billing_interval)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [quotationId, productId, variantId || null, itemType, parseInt(quantity, 10), unitPrice, costPrice, parseFloat(discountPct || 0), taxPct, billingInterval]
+          );
+        }
+      }
+      await calculateQuotationFinancials(quotationId);
+    }
+
     await logAudit({
       quotationId,
       userId: req.user.id,
       userRole: req.user.role,
       action: 'QUOTE_CREATED',
       newValue: `Draft Quote ${quotationNumber}`,
-      reason: 'Quotation draft initiated',
+      reason: 'Quotation draft initiated with products',
     });
 
     res.status(201).json({
       success: true,
       quotationId,
       quotationNumber,
-      message: 'Quotation draft created successfully.',
+      message: 'Quotation created successfully.',
     });
   } catch (error) {
+    console.error('Error creating quotation:', error);
     res.status(500).json({ success: false, error: "Couldn't create the quotation. Please check the selected products and try again." });
   }
 }

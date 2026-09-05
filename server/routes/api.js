@@ -153,6 +153,8 @@ router.post(
 // ==========================================
 router.get('/negotiations/:quotationId', authenticate, negotiationController.getNegotiations);
 router.post('/negotiations', authenticate, negotiationController.submitCounterOffer);
+router.post('/negotiations/:quotationId/respond', authenticate, authorizeRoles('SALES_REP', 'SALES_MANAGER', 'ADMIN'), negotiationController.respondToNegotiation);
+router.post('/negotiations/:quotationId/comment', authenticate, authorizeRoles('SALES_REP', 'SALES_MANAGER', 'ADMIN', 'CUSTOMER'), negotiationController.addComment);
 router.post('/quotations/:id/confirm', authenticate, negotiationController.confirmQuotation);
 
 // ==========================================
@@ -299,29 +301,29 @@ router.delete('/admin/upsell-rules/:id', authenticate, authorizeRoles('ADMIN'), 
 // ==========================================
 // 15. Dedicated B2B Customer Portal Endpoints
 // ==========================================
-router.get('/customer/dashboard', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerDashboard);
+router.get('/customer/dashboard', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.getCustomerDashboard);
 router.get('/customer/products', authenticate, authorizeRoles('CUSTOMER', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS', 'GUEST'), customerPortalController.getCustomerProducts);
 router.get('/customer/products/:id', authenticate, authorizeRoles('CUSTOMER', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS', 'GUEST'), customerPortalController.getCustomerProductById);
 
-router.get('/customer/cart', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerCart);
-router.post('/customer/cart', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.addToCart);
-router.put('/customer/cart/:itemId', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.updateCartItem);
-router.delete('/customer/cart/:itemId', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.deleteCartItem);
-router.post('/customer/cart/generate-quotation', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.generateQuotationFromCart);
+router.get('/customer/cart', authenticate, authorizeRoles('CUSTOMER', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS', 'GUEST'), customerPortalController.getCustomerCart);
+router.post('/customer/cart', authenticate, authorizeRoles('CUSTOMER', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS', 'GUEST'), customerPortalController.addToCart);
+router.put('/customer/cart/:itemId', authenticate, authorizeRoles('CUSTOMER', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS', 'GUEST'), customerPortalController.updateCartItem);
+router.delete('/customer/cart/:itemId', authenticate, authorizeRoles('CUSTOMER', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS', 'GUEST'), customerPortalController.deleteCartItem);
+router.post('/customer/cart/generate-quotation', authenticate, authorizeRoles('CUSTOMER', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS', 'GUEST'), customerPortalController.generateQuotationFromCart);
 
-router.get('/customer/quotations', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerQuotations);
-router.get('/customer/quotations/:id', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerQuotationById);
-router.post('/customer/quotations/:id/comments', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.addQuotationComment);
-router.post('/customer/quotations/:id/counter-offer', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.submitCustomerCounterOffer);
-router.post('/customer/quotations/:id/confirm', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.confirmCustomerQuotation);
+router.get('/customer/quotations', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.getCustomerQuotations);
+router.get('/customer/quotations/:id', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.getCustomerQuotationById);
+router.post('/customer/quotations/:id/comments', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.addQuotationComment);
+router.post('/customer/quotations/:id/counter-offer', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.submitCustomerCounterOffer);
+router.post('/customer/quotations/:id/confirm', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.confirmCustomerQuotation);
 
-router.get('/customer/orders', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerOrders);
-router.get('/customer/invoices', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerInvoices);
-router.get('/customer/subscriptions', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerSubscriptions);
-router.get('/customer/notifications', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerNotifications);
-router.post('/customer/notifications/:id/read', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.markNotificationRead);
-router.get('/customer/profile', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.getCustomerProfile);
-router.put('/customer/profile', authenticate, authorizeRoles('CUSTOMER'), customerPortalController.updateCustomerProfile);
+router.get('/customer/orders', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.getCustomerOrders);
+router.get('/customer/invoices', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.getCustomerInvoices);
+router.get('/customer/subscriptions', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.getCustomerSubscriptions);
+router.get('/customer/notifications', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.getCustomerNotifications);
+router.post('/customer/notifications/:id/read', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.markNotificationRead);
+router.get('/customer/profile', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.getCustomerProfile);
+router.put('/customer/profile', authenticate, authorizeRoles('CUSTOMER', 'GUEST', 'ADMIN', 'SALES_REP', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), customerPortalController.updateCustomerProfile);
 
 module.exports = router;
 

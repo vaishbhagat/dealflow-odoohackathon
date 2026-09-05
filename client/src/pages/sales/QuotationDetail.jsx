@@ -17,6 +17,13 @@ import {
   Building,
   User,
   Calendar,
+  MessageSquare,
+  Check,
+  RotateCcw,
+  XCircle,
+  X,
+  Package,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const QuotationDetail = () => {
@@ -37,6 +44,15 @@ export const QuotationDetail = () => {
   const [dismissedRecs, setDismissedRecs] = useState(new Set());
   const [showOrderDiscountModal, setShowOrderDiscountModal] = useState(false);
   const [orderDiscountPct, setOrderDiscountPct] = useState(5);
+
+  // Negotiation response states
+  const [showCounterModal, setShowCounterModal] = useState(false);
+  const [counterDiscountInput, setCounterDiscountInput] = useState(8);
+  const [counterMessageInput, setCounterMessageInput] = useState('');
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReasonInput, setRejectReasonInput] = useState('');
+  const [chatCommentInput, setChatCommentInput] = useState('');
+  const [respondingNeg, setRespondingNeg] = useState(false);
 
   // Submitting / Action state
   const [submitting, setSubmitting] = useState(false);
@@ -192,6 +208,78 @@ export const QuotationDetail = () => {
     }
   };
 
+  // ── Sales Rep Negotiation Actions ──
+  const handleAcceptNegotiation = async (negId) => {
+    if (!confirm('Accept customer counter-offer terms? This will apply requested discounts, recalculate margins, and update the quotation.')) return;
+    try {
+      setRespondingNeg(true);
+      const res = await api.post(`/negotiations/${id}/respond`, {
+        negotiationId: negId,
+        action: 'ACCEPT',
+        responseMessage: 'Accepted customer terms. Commercial agreement reached.',
+      });
+      setActionMessage(res.message || 'Customer counter-offer accepted! Deal updated.');
+      await loadQuotationDetails();
+    } catch (err) {
+      alert(err.error || 'Failed to accept counter-offer.');
+    } finally {
+      setRespondingNeg(false);
+    }
+  };
+
+  const handleCounterNegotiation = async (e) => {
+    e.preventDefault();
+    try {
+      setRespondingNeg(true);
+      const res = await api.post(`/negotiations/${id}/respond`, {
+        action: 'COUNTER',
+        counterDiscountPct: counterDiscountInput,
+        responseMessage: counterMessageInput || `Sales Rep proposed revised terms with ${counterDiscountInput}% discount.`,
+      });
+      setShowCounterModal(false);
+      setCounterMessageInput('');
+      setActionMessage(res.message || 'Revised counter-proposal sent to customer!');
+      await loadQuotationDetails();
+    } catch (err) {
+      alert(err.error || 'Failed to send counter-offer.');
+    } finally {
+      setRespondingNeg(false);
+    }
+  };
+
+  const handleRejectNegotiation = async (e) => {
+    e.preventDefault();
+    try {
+      setRespondingNeg(true);
+      const res = await api.post(`/negotiations/${id}/respond`, {
+        action: 'REJECT',
+        responseMessage: rejectReasonInput || 'Unable to accept requested terms due to minimum distributor margin requirements.',
+      });
+      setShowRejectModal(false);
+      setRejectReasonInput('');
+      setActionMessage(res.message || 'Counter-offer declined. Customer notified.');
+      await loadQuotationDetails();
+    } catch (err) {
+      alert(err.error || 'Failed to decline negotiation.');
+    } finally {
+      setRespondingNeg(false);
+    }
+  };
+
+  const handleSendComment = async (e) => {
+    e.preventDefault();
+    if (!chatCommentInput.trim()) return;
+    try {
+      await api.post(`/negotiations/${id}/comment`, {
+        commentText: chatCommentInput.trim(),
+      });
+      setChatCommentInput('');
+      await loadQuotationDetails();
+    } catch (err) {
+      alert(err.error || 'Failed to post message.');
+    }
+  };
+
   if (loading || !quotation) {
     return (
       <div className="p-12 flex justify-center min-h-[60vh] items-center">
@@ -284,19 +372,286 @@ export const QuotationDetail = () => {
               </button>
             )}
 
-            {/* Fulfill Order */}
-            {(quotation.status === 'APPROVED' || quotation.status === 'FULFILLMENT') && (
-              <Link
-                to={`/finance/fulfillment?quoteId=${quotation.id}`}
-                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/20 transition-all"
-              >
-                <Truck className="w-4 h-4" />
-                <span>Fulfill & Split Warehouse</span>
-              </Link>
-            )}
           </div>
         </div>
       </div>
+
+      {/* ── CUSTOMER NEGOTIATION REQUEST & RESPONSE PANEL ── */}
+      {((quotation.negotiations && quotation.negotiations.length > 0) || quotation.status === 'UNDER_NEGOTIATION') && (
+        <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-md overflow-hidden">
+          {/* Banner Header */}
+          <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 p-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-white/20 rounded-xl">
+                <MessageSquare className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black tracking-wide">Customer Negotiation Request</h3>
+                  <span className="px-2 py-0.5 bg-white text-amber-900 text-[10px] font-black rounded-full uppercase">
+                    {quotation.negotiations?.[0]?.status || 'UNDER NEGOTIATION'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-100">
+                  {quotation.customer_name} submitted a counter-proposal on this quotation.
+                </p>
+              </div>
+            </div>
+
+            {/* Action Buttons for Sales Rep */}
+            {quotation.negotiations?.[0]?.status === 'OPEN' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAcceptNegotiation(quotation.negotiations[0].id)}
+                  disabled={respondingNeg}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Accept Customer Terms</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCounterModal(true)}
+                  disabled={respondingNeg}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Counter Back</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRejectModal(true)}
+                  disabled={respondingNeg}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span>Decline Offer</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Negotiation Details & Thread */}
+          <div className="p-5 space-y-4">
+            {/* Latest Request Stats */}
+            {quotation.negotiations?.[0] && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-amber-50/60 rounded-xl border border-amber-200/80 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Requested Discount</span>
+                  <span className="text-base font-black text-amber-900">
+                    {parseFloat(quotation.negotiations[0].requested_discount_pct || 0)}%
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Customer Proposed Total</span>
+                  <span className="text-base font-black text-emerald-700">
+                    ₹{parseFloat(quotation.negotiations[0].counter_total || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Previous Total</span>
+                  <span className="text-sm font-semibold text-slate-500 line-through">
+                    ₹{parseFloat(quotation.negotiations[0].previous_total || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Requested On</span>
+                  <span className="text-xs font-medium text-slate-700">
+                    {new Date(quotation.negotiations[0].created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Customer's stated rationale */}
+            {quotation.negotiations?.[0]?.notes && (
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Customer Rationale</p>
+                <p className="text-xs text-slate-800 font-medium italic">"{quotation.negotiations[0].notes}"</p>
+              </div>
+            )}
+
+            {/* Negotiation Comment Thread */}
+            <div className="space-y-3 pt-2">
+              <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
+                <span>Negotiation Thread & Messages ({quotation.negotiationComments?.length || 0})</span>
+              </p>
+
+              <div className="space-y-2.5 max-h-60 overflow-y-auto pr-2">
+                {(!quotation.negotiationComments || quotation.negotiationComments.length === 0) ? (
+                  <p className="text-xs text-slate-400 italic">No messages yet in this thread.</p>
+                ) : (
+                  quotation.negotiationComments.map((comment) => {
+                    const isRep = comment.author_role === 'SALES_REP' || comment.author_role === 'SALES_MANAGER' || comment.author_role === 'ADMIN';
+                    return (
+                      <div
+                        key={comment.id}
+                        className={`p-3 rounded-xl text-xs space-y-1 ${
+                          isRep ? 'bg-blue-50 border border-blue-200 ml-6' : 'bg-slate-50 border border-slate-200 mr-6'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className={`font-bold ${isRep ? 'text-blue-800' : 'text-slate-800'}`}>
+                            {comment.author_name || (isRep ? 'Sales Representative' : quotation.customer_name)}
+                            <span className={`ml-2 px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                              isRep ? 'bg-blue-200 text-blue-800' : 'bg-slate-200 text-slate-700'
+                            }`}>
+                              {comment.author_role}
+                            </span>
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className="text-slate-700 text-xs">{comment.comment_text}</p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Reply Box */}
+              <form onSubmit={handleSendComment} className="flex gap-2 pt-2 border-t border-slate-100">
+                <input
+                  type="text"
+                  value={chatCommentInput}
+                  onChange={(e) => setChatCommentInput(e.target.value)}
+                  placeholder="Reply to customer with commercial rationale or concessions..."
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                />
+                <button
+                  type="submit"
+                  disabled={!chatCommentInput.trim()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FULFILLMENT & DISPATCH TRACKING (Sales Rep Tracking) ── */}
+      {(quotation.fulfillmentOrder || ['APPROVED', 'FULFILLMENT', 'INVOICED', 'PAID'].includes(quotation.status)) && (
+        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wide text-slate-900">
+                  Fulfillment & Delivery Progress
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Real-time warehouse allocation and shipment tracking for this customer order.
+                </p>
+              </div>
+            </div>
+            {quotation.fulfillmentOrder && (
+              <span className="font-mono text-xs font-bold px-2.5 py-1 bg-purple-50 border border-purple-200 text-purple-800 rounded-lg">
+                {quotation.fulfillmentOrder.fulfillment_number}
+              </span>
+            )}
+          </div>
+
+          {/* Stepper Progress Bar */}
+          {(() => {
+            const foStatus = quotation.fulfillmentOrder?.status || (quotation.status === 'PAID' ? 'DELIVERED' : 'ALLOCATED');
+            const steps = [
+              { label: 'Order Confirmed', completed: true },
+              { label: 'Warehouse Allocated', completed: ['ALLOCATED', 'PARTIAL', 'DISPATCHED', 'DELIVERED'].includes(foStatus) },
+              { label: 'Packed & Dispatched', completed: ['DISPATCHED', 'DELIVERED'].includes(foStatus) },
+              { label: 'Delivered to Customer', completed: foStatus === 'DELIVERED' },
+            ];
+            return (
+              <div className="py-2">
+                <div className="grid grid-cols-4 gap-2">
+                  {steps.map((s, idx) => (
+                    <div key={idx} className="space-y-1.5 text-center">
+                      <div className={`h-2 rounded-full ${s.completed ? 'bg-purple-600' : 'bg-slate-200'}`} />
+                      <span className={`text-[10px] font-bold block ${s.completed ? 'text-purple-700' : 'text-slate-400'}`}>
+                        {s.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Key Metadata Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Fulfillment Status</span>
+              <span className="font-extrabold text-purple-700 uppercase">
+                {quotation.fulfillmentOrder?.status || 'IN FULFILLMENT'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Expected Delivery</span>
+              <span className="font-bold text-slate-900">
+                {quotation.fulfillmentOrder?.expected_delivery_date
+                  ? new Date(quotation.fulfillmentOrder.expected_delivery_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : 'Within 5-7 business days'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Shipment Batches</span>
+              <span className="font-bold text-slate-900">
+                {quotation.fulfillmentOrder?.total_shipments || 1} Batch Shipment(s)
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Estimated Shipping</span>
+              <span className="font-bold text-slate-900">
+                ₹{parseFloat(quotation.fulfillmentOrder?.estimated_shipping_cost || 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+
+          {/* Warehouse Shipments breakdown table */}
+          {quotation.fulfillmentOrder?.items && quotation.fulfillmentOrder.items.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Warehouse Splits & Allocations</p>
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] border-b border-slate-200">
+                    <tr>
+                      <th className="p-2.5">Product</th>
+                      <th className="p-2.5 text-center">Qty</th>
+                      <th className="p-2.5">Dispatched From Warehouse</th>
+                      <th className="p-2.5 text-center">Batch #</th>
+                      <th className="p-2.5 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {quotation.fulfillmentOrder.items.map((fi, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="p-2.5 font-bold text-slate-900">{fi.product_name}</td>
+                        <td className="p-2.5 text-center font-bold text-slate-800">{fi.quantity}</td>
+                        <td className="p-2.5 text-slate-600 font-medium">
+                          <span className="font-semibold text-blue-700">{fi.warehouse_name}</span>
+                          {fi.warehouse_location && <span className="text-[10px] text-slate-400 block">{fi.warehouse_location}</span>}
+                        </td>
+                        <td className="p-2.5 text-center text-slate-500 font-mono text-[11px]">Batch #{fi.shipment_batch || 1}</td>
+                        <td className="p-2.5 text-right">
+                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded-lg uppercase">
+                            {fi.status || 'ALLOCATED'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Discount Governance & Multi-Step Approval Chain Visualizer */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
@@ -814,6 +1169,144 @@ export const QuotationDetail = () => {
                   className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md disabled:opacity-50"
                 >
                   {submitting ? 'Applying...' : 'Apply to All Lines'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sales Rep Counter-Offer Back Modal */}
+      {showCounterModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-blue-600" />
+                <h3 className="text-sm font-black text-slate-900">Counter Back to Customer</h3>
+              </div>
+              <button
+                onClick={() => setShowCounterModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Propose revised commercial terms to {quotation.customer_name}. The quotation will update and the customer will be notified immediately.
+            </p>
+
+            <form onSubmit={handleCounterNegotiation} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Proposed Counter Discount %
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={counterDiscountInput}
+                    onChange={(e) => setCounterDiscountInput(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                  <span className="font-bold text-slate-500">%</span>
+                </div>
+                <div className="flex justify-between items-center mt-1.5 text-[11px] text-slate-500">
+                  <span>Estimated Deal Total:</span>
+                  <span className="font-bold text-blue-700">
+                    ₹{(parseFloat(quotation.subtotal || 0) * (1 - counterDiscountInput / 100) * 1.18).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Message / Concession Rationale for Customer
+                </label>
+                <textarea
+                  rows={3}
+                  value={counterMessageInput}
+                  onChange={(e) => setCounterMessageInput(e.target.value)}
+                  placeholder="e.g. We can offer 8% if you proceed with our annual maintenance warranty package..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowCounterModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={respondingNeg}
+                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md disabled:opacity-50 cursor-pointer"
+                >
+                  {respondingNeg ? 'Sending...' : 'Send Counter-Offer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sales Rep Decline / Reject Counter-Offer Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-rose-600">
+                <XCircle className="w-5 h-5" />
+                <h3 className="text-sm font-black text-slate-900">Decline Customer Counter-Offer</h3>
+              </div>
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Explain why Gada Electronics cannot accept this counter-offer. The quotation will revert to original commercial pricing terms.
+            </p>
+
+            <form onSubmit={handleRejectNegotiation} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Decline Reason / Explanation to Customer
+                </label>
+                <textarea
+                  rows={3}
+                  value={rejectReasonInput}
+                  onChange={(e) => setRejectReasonInput(e.target.value)}
+                  placeholder="e.g. This pricing falls below distributor floor margin. We recommend our standard tier warranty instead."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowRejectModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={respondingNeg}
+                  className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md disabled:opacity-50 cursor-pointer"
+                >
+                  {respondingNeg ? 'Declining...' : 'Confirm Decline'}
                 </button>
               </div>
             </form>

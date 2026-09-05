@@ -2,6 +2,8 @@ const { query } = require('../config/db');
 const {
   submitCustomerCounterOffer,
   confirmQuotationByCustomer,
+  respondToCustomerNegotiation,
+  addNegotiationComment,
 } = require('../services/negotiationService');
 
 /**
@@ -64,6 +66,59 @@ async function submitCounterOffer(req, res) {
 }
 
 /**
+ * Sales Rep responds to a customer counter-offer (Accept / Counter / Reject)
+ */
+async function respondToNegotiation(req, res) {
+  try {
+    const { quotationId } = req.params;
+    const { negotiationId, action, counterDiscountPct, responseMessage } = req.body;
+
+    if (!action || !['ACCEPT', 'COUNTER', 'REJECT'].includes(action)) {
+      return res.status(400).json({ success: false, error: 'Valid action (ACCEPT, COUNTER, REJECT) is required.' });
+    }
+
+    const result = await respondToCustomerNegotiation({
+      quotationId: parseInt(quotationId, 10),
+      negotiationId: negotiationId ? parseInt(negotiationId, 10) : null,
+      salesUser: req.user,
+      action,
+      counterDiscountPct: counterDiscountPct !== undefined ? parseFloat(counterDiscountPct) : null,
+      responseMessage,
+    });
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Add a comment or message to negotiation thread
+ */
+async function addComment(req, res) {
+  try {
+    const { quotationId } = req.params;
+    const { negotiationId, commentText, quotationItemId } = req.body;
+
+    if (!commentText) {
+      return res.status(400).json({ success: false, error: 'commentText is required.' });
+    }
+
+    const result = await addNegotiationComment({
+      quotationId: parseInt(quotationId, 10),
+      negotiationId: negotiationId ? parseInt(negotiationId, 10) : null,
+      user: req.user,
+      commentText,
+      quotationItemId: quotationItemId ? parseInt(quotationItemId, 10) : null,
+    });
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/**
  * Customer confirms quotation
  */
 async function confirmQuotation(req, res) {
@@ -79,5 +134,7 @@ async function confirmQuotation(req, res) {
 module.exports = {
   getNegotiations,
   submitCounterOffer,
+  respondToNegotiation,
+  addComment,
   confirmQuotation,
 };
