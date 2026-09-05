@@ -1,0 +1,22 @@
+{
+  "name": "dealflow360",
+  "version": "1.0.0",
+  "description": "DealFlow360 - Intelligent, Self-Governing Sales Operations Platform for Gada Electronics",
+  "scripts": {
+    "db:init": "cd server && node database/initDb.js",
+    "server": "cd server && node server.js",
+    "client": "cd client && npm run dev",
+    "start": "cd server && node server.js",
+    "build": "cd client && npm run build"
+  },
+  "keywords": [
+    "dealflow360",
+    "gada-electronics",
+    "sales-operations",
+    "discount-governance",
+    "warehouse-splitting",
+    "b2b"
+  ],
+  "author": "Gada Electronics Engineering",
+  "license": "ISC"
+}

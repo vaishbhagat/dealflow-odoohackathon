@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="14" fill="#0F172A"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" stroke="url(#gold-glow)" stroke-width="3"/>
+  <path d="M18 20C18 16.6863 20.6863 14 24 14H40C43.3137 14 46 16.6863 46 20V24H26V38H38V33H31V29H42C44.2091 29 46 30.7909 46 33V40C46 43.3137 43.3137 46 40 46H24C20.6863 46 18 43.3137 18 40V20Z" fill="url(#gada-gold)"/>
+  <path d="M44 14L50 8M50 8H45M50 8V13" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="32" r="2.5" fill="#FDE68A"/>
+  <defs>
+    <linearGradient id="gada-gold" x1="18" y1="14" x2="46" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE68A"/>
+      <stop offset="0.3" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="gold-glow" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F59E0B" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#D97706" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+</svg>
