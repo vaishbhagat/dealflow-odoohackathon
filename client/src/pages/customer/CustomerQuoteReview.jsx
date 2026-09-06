@@ -235,20 +235,29 @@ export const CustomerQuoteReview = () => {
 
   const isConfirmed = ['FULFILLMENT', 'INVOICED', 'PAID', 'COMPLETED'].includes(quotation.status);
   const isPaid = quotation.status === 'PAID';
+  const isApproved = quotation.approval_status === 'APPROVED' || isConfirmed;
+  const isUnderNegotiation = quotation.status === 'UNDER_NEGOTIATION';
 
-  // Timeline Steps Configuration
-  const timelineSteps = [
-    { title: 'Quotation Requested', done: true },
+  // Timeline Steps Configuration with monotonic completion guarantee
+  const rawSteps = [
     { title: 'Quotation Created', done: true },
     { title: 'Sent to Customer', done: true },
     { title: 'Customer Viewed', done: true },
-    { title: 'Counter Offer Submitted', done: quotation.status === 'UNDER_NEGOTIATION' || isConfirmed },
-    { title: 'Approval Requested', done: quotation.approval_status === 'APPROVED' || isConfirmed },
-    { title: 'Revised Quote Approved', done: quotation.approval_status === 'APPROVED' || isConfirmed },
-    { title: 'Customer Confirmation', done: isConfirmed },
+    { title: 'Counter Offer Submitted', done: isUnderNegotiation || isApproved },
+    { title: 'Governance Approval', done: isApproved },
+    { title: 'Order Confirmed', done: isConfirmed },
     { title: 'Payment', done: isPaid },
     { title: 'Fulfillment', done: isConfirmed },
   ];
+
+  // Enforce monotonic completion: step N is completed if any step > N is completed
+  for (let i = rawSteps.length - 2; i >= 0; i--) {
+    if (rawSteps[i + 1].done) {
+      rawSteps[i].done = true;
+    }
+  }
+
+  const timelineSteps = rawSteps;
 
   return (
     <div className="space-y-6">

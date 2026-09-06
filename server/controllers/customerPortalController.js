@@ -846,30 +846,33 @@ async function submitCustomerCounterOffer(req, res) {
 
     const quote = quotes[0];
     const discount = parseFloat(requestedDiscountPct || 0);
+    const previousTotal = parseFloat(quote.total_amount || 0);
 
-    const subtotal = parseFloat(quote.subtotal);
-    const newDiscountAmount = subtotal * (discount / 100);
-    const newSubtotal = subtotal - newDiscountAmount;
-    const newTax = newSubtotal * 0.18;
-    const counterTotal = newSubtotal + newTax;
+    // Apply requested discount to quotation line items
+    await query(`UPDATE quotation_items SET discount_pct = ? WHERE quotation_id = ?`, [discount, id]);
+
+    // Recalculate quotation master financials and risk score
+    const { calculateQuotationFinancials } = require('../services/discountRiskService');
+    const fin = await calculateQuotationFinancials(id);
+    const counterTotal = fin.totalAmount;
 
     // Save Negotiation record
     await query(
       `INSERT INTO negotiations (quotation_id, customer_id, salesperson_id, status, requested_discount_pct, previous_total, counter_total, notes)
        VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?)`,
-      [id, customerId, quote.salesperson_id, discount, quote.total_amount, counterTotal, reason || 'Customer counter-offer']
+      [id, customerId, quote.salesperson_id, discount, previousTotal, counterTotal, reason || 'Customer counter-offer']
     );
 
-    // Check discount governance rules: if requested discount > 10%, set PENDING_MANAGER
-    const requiresApproval = discount > 10.0;
+    // Check discount governance rules: if requested discount > 10% or risk score > 5, require manager approval
+    const requiresApproval = discount > 10.0 || fin.blendedRiskScore > 5.0;
     const approvalStatus = requiresApproval ? 'PENDING_MANAGER' : 'NOT_REQUIRED';
 
     // Update Quotation Status
     await query(
       `UPDATE quotations 
-       SET status = 'UNDER_NEGOTIATION', approval_status = ?, total_discount = ?, tax_amount = ?, total_amount = ?, last_activity_at = CURRENT_TIMESTAMP
+       SET status = 'UNDER_NEGOTIATION', approval_status = ?, last_activity_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [approvalStatus, newDiscountAmount, newTax, counterTotal, id]
+      [approvalStatus, id]
     );
 
     // If approval required, create approval request for Sales Manager (Natu Kaka)

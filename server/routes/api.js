@@ -298,6 +298,28 @@ router.get('/admin/upsell-rules', authenticate, authorizeRoles('ADMIN', 'SALES_M
 router.post('/admin/upsell-rules', authenticate, authorizeRoles('ADMIN'), adminController.saveUpsellRule);
 router.delete('/admin/upsell-rules/:id', authenticate, authorizeRoles('ADMIN'), adminController.deleteUpsellRule);
 
+router.get('/admin/audit-logs', authenticate, authorizeRoles('ADMIN', 'SALES_MANAGER', 'FINANCE_OPERATIONS'), async (req, res) => {
+  try {
+    const { query } = require('../config/db');
+    const { quotationId, action, limit = 50 } = req.query;
+    let sql = `SELECT al.*, u.name as user_name, u.email as user_email, 
+               q.quotation_number
+               FROM audit_logs al
+               LEFT JOIN users u ON al.user_id = u.id
+               LEFT JOIN quotations q ON al.quotation_id = q.id
+               WHERE 1=1`;
+    const params = [];
+    if (quotationId) { sql += ' AND al.quotation_id = ?'; params.push(quotationId); }
+    if (action) { sql += ' AND al.action = ?'; params.push(action); }
+    sql += ' ORDER BY al.created_at DESC LIMIT ?';
+    params.push(parseInt(limit, 10));
+    const logs = await query(sql, params);
+    res.json({ success: true, logs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ==========================================
 // 15. Dedicated B2B Customer Portal Endpoints
 // ==========================================

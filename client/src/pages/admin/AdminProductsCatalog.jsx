@@ -59,6 +59,12 @@ export const AdminProductsCatalog = () => {
   const [editDescription, setEditDescription] = useState('');
   const [editCategoryId, setEditCategoryId] = useState('1');
 
+  // Variants state
+  const [showVariantsModal, setShowVariantsModal] = useState(false);
+  const [activeProductForVariants, setActiveProductForVariants] = useState(null);
+  const [productVariants, setProductVariants] = useState([]);
+  const [variantForm, setVariantForm] = useState({ variantName: '', attributeType: 'Size', attributeValue: '', priceDelta: 0, sku: '' });
+
   useEffect(() => {
     fetchProducts();
     fetchCategories();
@@ -67,6 +73,39 @@ export const AdminProductsCatalog = () => {
   const showToast = (msg) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3500);
+  };
+
+  const fetchVariants = async (productId) => {
+    try {
+      const res = await api.get(`/admin/variants?productId=${productId}`);
+      if (res.success) setProductVariants(res.variants || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAddVariant = async (e) => {
+    e.preventDefault();
+    try {
+      setSubmitting(true);
+      const res = await api.post('/admin/variants', {
+        productId: activeProductForVariants.id,
+        variantName: variantForm.variantName,
+        attributeType: variantForm.attributeType,
+        attributeValue: variantForm.attributeValue,
+        priceDelta: parseFloat(variantForm.priceDelta),
+        sku: variantForm.sku
+      });
+      if (res.success) {
+        showToast('Variant added!');
+        setVariantForm({ variantName: '', attributeType: 'Size', attributeValue: '', priceDelta: 0, sku: '' });
+        await fetchVariants(activeProductForVariants.id);
+      }
+    } catch (err) {
+      alert(err.error || err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const fetchProducts = async () => {
@@ -358,6 +397,14 @@ export const AdminProductsCatalog = () => {
                     {isAdmin && (
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => { setActiveProductForVariants(p); fetchVariants(p.id); setShowVariantsModal(true); }}
+                            title="Manage Variants"
+                            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 transition-colors cursor-pointer"
+                          >
+                            <Boxes className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleOpenEditModal(p)}
@@ -680,6 +727,118 @@ export const AdminProductsCatalog = () => {
                   {submitting ? 'Updating...' : 'Update Product'}
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* VARIANTS MODAL */}
+      {showVariantsModal && activeProductForVariants && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => { setShowVariantsModal(false); setActiveProductForVariants(null); setProductVariants([]); }}
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-700 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div>
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <Boxes className="w-5 h-5 text-indigo-600" />
+                Product Variants: {activeProductForVariants.name}
+              </h3>
+              <p className="text-xs text-slate-500">Add or remove attributes like Size, Pack, or Color with price adjustments.</p>
+            </div>
+
+            {/* List Existing Variants */}
+            <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-700">Existing Variants ({productVariants.length})</h4>
+              {productVariants.length === 0 ? (
+                <p className="text-xs text-slate-400">No variants configured. Product acts as a single SKU.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {productVariants.map(v => (
+                    <li key={v.id} className="flex items-center justify-between bg-white border border-slate-100 p-2 rounded-lg shadow-xs text-xs">
+                      <div>
+                        <span className="font-bold text-slate-800">{v.variant_name}</span>
+                        <span className="text-slate-400 ml-2">({v.attribute_type}: {v.attribute_value})</span>
+                        <span className="text-[10px] text-slate-400 font-mono block">SKU: {v.sku || 'N/A'}</span>
+                      </div>
+                      <div className="font-black text-indigo-600">
+                        {v.price_delta > 0 ? '+' : ''}₹{parseFloat(v.price_delta).toLocaleString()}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Add New Variant Form */}
+            <form onSubmit={handleAddVariant} className="space-y-4 border-t border-slate-100 pt-4">
+              <h4 className="text-xs font-bold text-slate-700">Add New Variant</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Variant Name</label>
+                  <input
+                    type="text" required placeholder="e.g. 64GB Model"
+                    value={variantForm.variantName}
+                    onChange={(e) => setVariantForm({ ...variantForm, variantName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Variant SKU</label>
+                  <input
+                    type="text" required placeholder="e.g. LAP-DELL-64GB"
+                    value={variantForm.sku}
+                    onChange={(e) => setVariantForm({ ...variantForm, sku: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Attribute Type</label>
+                  <select
+                    value={variantForm.attributeType}
+                    onChange={(e) => setVariantForm({ ...variantForm, attributeType: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  >
+                    <option value="Size">Size</option>
+                    <option value="Color">Color</option>
+                    <option value="Storage">Storage</option>
+                    <option value="Memory">Memory</option>
+                    <option value="Pack">Pack</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Attribute Value</label>
+                  <input
+                    type="text" required placeholder="e.g. XL, 64GB"
+                    value={variantForm.attributeValue}
+                    onChange={(e) => setVariantForm({ ...variantForm, attributeValue: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Price Adjustment (₹)</label>
+                  <input
+                    type="number" step="0.01" required placeholder="e.g. 500 or -200"
+                    value={variantForm.priceDelta}
+                    onChange={(e) => setVariantForm({ ...variantForm, priceDelta: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit" disabled={submitting}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-all"
+              >
+                {submitting ? 'Adding...' : 'Add Variant'}
+              </button>
             </form>
           </div>
         </div>

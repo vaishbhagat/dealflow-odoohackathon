@@ -64,10 +64,8 @@ async function calculateQuotationFinancials(quotationId, connection = null) {
     const costPrice = parseFloat(item.cost_price);
     const discountPct = parseFloat(item.discount_pct || 0);
     const taxPct = parseFloat(item.tax_pct !== undefined && item.tax_pct !== null ? item.tax_pct : (item.default_tax_pct || 18.0));
-    const categoryCeiling = parseFloat(item.category_ceiling_pct || 10.0);
-
-    // Effective allowed discount ceiling: capped by category rule
-    const allowedDiscountPct = categoryCeiling;
+    // Effective allowed discount ceiling: min of customer tier ceiling and product category ceiling
+    const allowedDiscountPct = Math.min(customerTierLimit, categoryCeiling);
 
     // Calculate line overage
     const discountOveragePct = Math.max(0, discountPct - allowedDiscountPct);

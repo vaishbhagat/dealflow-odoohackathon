@@ -20,6 +20,8 @@ import {
   Network,
   MessageSquare,
   Bell,
+  Sparkles,
+  ClipboardList,
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -134,17 +136,15 @@ export const Sidebar = () => {
                 <div className="pt-2 pb-0.5">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">My Rep Tools</p>
                 </div>
-                <NavLink to="/sales/negotiations" className={navItemClass}>
-                  <MessageSquare className="w-4 h-4 text-amber-600" />
-                  <span>Negotiations Inbox</span>
-                </NavLink>
+                {role !== 'FINANCE_OPERATIONS' && (
+                  <NavLink to="/sales/negotiations" className={navItemClass}>
+                    <MessageSquare className="w-4 h-4 text-amber-600" />
+                    <span>Negotiations Inbox</span>
+                  </NavLink>
+                )}
                 <NavLink to="/sales/approvals" className={navItemClass}>
                   <ShieldCheck className="w-4 h-4 text-blue-600" />
                   <span>Approval Tracker</span>
-                </NavLink>
-                <NavLink to="/sales/follow-ups" className={navItemClass}>
-                  <Bell className="w-4 h-4 text-rose-500" />
-                  <span>Follow-Up Tasks</span>
                 </NavLink>
               </nav>
             </div>
@@ -241,6 +241,10 @@ export const Sidebar = () => {
                   <NavLink to="/admin/architecture" className={navItemClass}>
                     <Network className="w-4 h-4 text-blue-500" />
                     <span>Architecture Diagram</span>
+                  </NavLink>
+                  <NavLink to="/admin/upsell-rules" className={navItemClass}>
+                    <Sparkles className="w-4 h-4 text-violet-500" />
+                    <span>Upsell / Cross-Sell Rules</span>
                   </NavLink>
                 </nav>
               </div>

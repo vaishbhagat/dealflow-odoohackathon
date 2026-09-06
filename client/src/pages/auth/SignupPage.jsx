@@ -11,6 +11,8 @@ export const SignupPage = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  const [role, setRole] = useState('SALES_REP');
+
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -38,14 +40,19 @@ export const SignupPage = () => {
       name: fullName,
       email: email.trim(),
       password,
+      role,
     });
 
     setLoading(false);
 
     if (res && res.success) {
-      setSuccessMsg('Account created successfully! Redirecting to customer portal...');
+      setSuccessMsg(`Account created successfully as ${role === 'SALES_REP' ? 'Sales Representative' : 'Customer'}! Redirecting...`);
       setTimeout(() => {
-        navigate('/customer/dashboard');
+        if (role === 'SALES_REP' || role === 'SALES_MANAGER' || role === 'ADMIN') {
+          navigate('/sales/quotations');
+        } else {
+          navigate('/customer/dashboard');
+        }
       }, 1200);
     } else {
       setError(res?.error || 'Registration failed. Please check your details.');
@@ -180,6 +187,22 @@ export const SignupPage = () => {
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Account Type / Role
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  <option value="SALES_REP">Sales Representative (Rep Workspace)</option>
+                  <option value="CUSTOMER">B2B Customer (Portal Access)</option>
+                  <option value="SALES_MANAGER">Sales Manager</option>
+                  <option value="FINANCE_OPERATIONS">Finance & Operations</option>
+                </select>
               </div>
 
               <div>

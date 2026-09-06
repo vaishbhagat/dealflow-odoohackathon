@@ -13,6 +13,7 @@ import {
   Building2,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
   Zap,
   Tag,
   Warehouse,
@@ -45,6 +46,9 @@ export const RepProductCatalog = () => {
   const [successMessage, setSuccessMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
+  const [upsellRules, setUpsellRules] = useState([]);
+  const [dismissedRecIds, setDismissedRecIds] = useState([]);
+
   useEffect(() => {
     fetchInitialData();
   }, []);
@@ -70,6 +74,10 @@ export const RepProductCatalog = () => {
         setCustomers(custRes.customers);
         setSelectedCustomerId(custRes.customers[0].id.toString());
       }
+
+      // Fetch upsell rules for AI panel
+      const upsellRes = await api.get('/admin/upsell-rules').catch(() => ({ success: false }));
+      if (upsellRes.success) setUpsellRules(upsellRes.rules || []);
     } catch (err) {
       console.error('Failed to load products/customers:', err);
     } finally {
@@ -131,7 +139,13 @@ export const RepProductCatalog = () => {
     setQuoteItems((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
-  // Calculations for quote summary
+  // Calculations for quote summary & hybrid billing
+  const isSubscriptionCategory = (catName) => {
+    if (!catName) return false;
+    const lower = catName.toLowerCase();
+    return lower.includes('warranty') || lower.includes('amc') || lower.includes('service') || lower.includes('subscription');
+  };
+
   const subtotal = quoteItems.reduce((acc, item) => {
     const listPrice = parseFloat(item.product.selling_price || 0);
     return acc + listPrice * item.quantity;
@@ -147,13 +161,55 @@ export const RepProductCatalog = () => {
   const totalTax = netSubtotal * 0.18; // 18% GST
   const grandTotal = netSubtotal + totalTax;
 
+  // Hybrid billing breakdown (Upfront Hardware vs Recurring Subscriptions/AMC)
+  const upfrontNet = quoteItems
+    .filter((i) => !isSubscriptionCategory(i.product.category_name))
+    .reduce((acc, i) => {
+      const list = parseFloat(i.product.selling_price || 0);
+      return acc + list * i.quantity * (1 - i.discountPct / 100);
+    }, 0);
+
+  const recurringNet = quoteItems
+    .filter((i) => isSubscriptionCategory(i.product.category_name))
+    .reduce((acc, i) => {
+      const list = parseFloat(i.product.selling_price || 0);
+      return acc + list * i.quantity * (1 - i.discountPct / 100);
+    }, 0);
+
   const maxDiscountPct = quoteItems.length > 0
     ? Math.max(...quoteItems.map((i) => i.discountPct))
     : 0;
 
-  // Max discount governance warning
-  const needsManagerApproval = maxDiscountPct > 15;
-  const needsFinanceApproval = grandTotal > 500000;
+  // Multi-tier discount governance rules
+  const isTier1Auto = maxDiscountPct <= 10;
+  const needsManagerApproval = maxDiscountPct > 10 && maxDiscountPct <= 20;
+  const needsFinanceApproval = maxDiscountPct > 20 || grandTotal > 500000;
+
+  // Smart AI Recommendations: driven by configured upsell_rules table
+  // Find rules where trigger product is in the cart, recommended product is NOT yet in cart
+  const cartProductIds = quoteItems.map((i) => i.product.id);
+  const dynamicRecommendations = upsellRules
+    .filter((rule) => {
+      const triggerInCart = cartProductIds.includes(parseInt(rule.trigger_product_id));
+      const recNotInCart = !cartProductIds.includes(parseInt(rule.recommended_product_id));
+      const notDismissed = !dismissedRecIds.includes(rule.id);
+      return triggerInCart && recNotInCart && notDismissed && rule.active;
+    })
+    .sort((a, b) => (b.is_promoted ? 1 : 0) - (a.is_promoted ? 1 : 0)) // promoted first
+    .slice(0, 4);
+
+  // Map recommended_product_id to actual product data
+  const smartRecommendations = dynamicRecommendations
+    .map((rule) => {
+      const product = products.find((p) => p.id === parseInt(rule.recommended_product_id));
+      if (!product) return null;
+      return { ...product, _rule: rule };
+    })
+    .filter(Boolean);
+
+  const handleDismissRec = (ruleId) => {
+    setDismissedRecIds((prev) => [...prev, ruleId]);
+  };
 
   // Submit and create official Quotation
   const handleGenerateQuotation = async () => {
@@ -472,9 +528,15 @@ export const RepProductCatalog = () => {
               <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1 scrollbar-thin">
                 {quoteItems.map((item) => {
                   const listPrice = parseFloat(item.product.selling_price || 0);
+                  const costPrice = parseFloat(item.product.cost_price || (listPrice * 0.65)); // Default 65% cost if undefined
+                  const lineCost = costPrice * item.quantity;
                   const lineSubtotal = listPrice * item.quantity;
                   const discountVal = lineSubtotal * (item.discountPct / 100);
                   const lineNet = lineSubtotal - discountVal;
+                  
+                  const marginAmt = lineNet - lineCost;
+                  const marginPct = lineNet > 0 ? (marginAmt / lineNet) * 100 : 0;
+                  const isMarginWarning = marginPct < 15;
 
                   return (
                     <div
@@ -538,9 +600,15 @@ export const RepProductCatalog = () => {
 
                       {/* Line Item Pricing Summary */}
                       <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/60">
-                        <span className="text-slate-500">
-                          ₹{listPrice.toLocaleString()} × {item.quantity}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="text-slate-500">
+                            ₹{listPrice.toLocaleString()} × {item.quantity}
+                          </span>
+                          <span className={`font-semibold ${isMarginWarning ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            Margin: {marginPct.toFixed(1)}% 
+                            {isMarginWarning && <AlertCircle className="inline-block w-3 h-3 ml-1" />}
+                          </span>
+                        </div>
                         <div className="text-right">
                           {item.discountPct > 0 && (
                             <span className="text-[10px] text-rose-600 font-bold block">
@@ -558,31 +626,99 @@ export const RepProductCatalog = () => {
               </div>
             )}
 
-            {/* Governance Status Alert */}
+            {/* Smart AI Upsell & Cross-Sell Recommendations - Driven by configured upsell_rules */}
+            {quoteItems.length > 0 && smartRecommendations.length > 0 && (
+              <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200/80 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-black text-indigo-950">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                    <span>AI Smart Upsell & Cross-Sell</span>
+                  </div>
+                  <span className="text-[10px] text-indigo-400">{smartRecommendations.length} suggestion{smartRecommendations.length > 1 ? 's' : ''}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {smartRecommendations.map((rec) => (
+                    <div
+                      key={rec.id}
+                      className={`bg-white border rounded-xl p-2 flex items-center justify-between gap-2 text-xs shadow-xs ${rec._rule?.is_promoted ? 'border-amber-300 bg-amber-50/50' : 'border-indigo-100'}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <p className="font-bold text-slate-900 truncate">{rec.name}</p>
+                          {rec._rule?.is_promoted && (
+                            <span className="px-1 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-extrabold rounded uppercase shrink-0">★ Promoted</span>
+                          )}
+                          {rec._rule?.promo_tag && (
+                            <span className="px-1 py-0.5 bg-violet-100 text-violet-700 text-[9px] font-extrabold rounded uppercase shrink-0">{rec._rule.promo_tag}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                          <span>₹{parseFloat(rec.selling_price).toLocaleString()} • {rec.category_name}</span>
+                          <span className="font-extrabold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                            +{parseFloat(rec._rule?.margin_delta || 2.5).toFixed(1)}% Margin Delta
+                          </span>
+                        </div>
+                        {rec._rule?.reason && (
+                          <p className="text-[10px] text-indigo-500 italic mt-0.5">{rec._rule.reason}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleAddToQuote(rec)}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded-lg flex items-center gap-1 shadow-xs transition-all"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Add</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDismissRec(rec._rule?.id)}
+                          title="Dismiss suggestion"
+                          className="p-1 bg-slate-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg text-[10px] transition-all"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Multi-Tier Governance Status Alert */}
             {quoteItems.length > 0 && (
               <div
-                className={`p-3 rounded-2xl border text-xs font-medium space-y-1 ${
-                  needsManagerApproval
+                className={`p-3.5 rounded-2xl border text-xs font-medium space-y-1 ${
+                  needsFinanceApproval
+                    ? 'bg-rose-50 border-rose-200 text-rose-900'
+                    : needsManagerApproval
                     ? 'bg-amber-50 border-amber-200 text-amber-900'
                     : 'bg-emerald-50 border-emerald-200 text-emerald-900'
                 }`}
               >
                 <div className="flex items-center gap-1.5 font-bold">
-                  {needsManagerApproval ? (
+                  {needsFinanceApproval ? (
+                    <ShieldAlert className="w-4 h-4 text-rose-600" />
+                  ) : needsManagerApproval ? (
                     <ShieldAlert className="w-4 h-4 text-amber-600" />
                   ) : (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   )}
                   <span>
-                    {needsManagerApproval
-                      ? 'Requires Sales Manager Approval'
-                      : 'Auto-Approved Discount Tier'}
+                    {needsFinanceApproval
+                      ? 'Level 3: Finance & VP Executive Approval Required'
+                      : needsManagerApproval
+                      ? 'Level 2: Sales Manager Review Required'
+                      : 'Level 1: Autonomous Rep Delegation (Auto-Approved)'}
                   </span>
                 </div>
                 <p className="text-[10px] opacity-90 leading-tight">
-                  {needsManagerApproval
-                    ? `Max discount applied is ${maxDiscountPct}%, exceeding standard 15% rep delegation limit.`
-                    : `Discounts applied (${maxDiscountPct}%) are within your autonomous rep delegation limit.`}
+                  {needsFinanceApproval
+                    ? `Max discount applied (${maxDiscountPct}%) or high deal value (>₹5,00,000) triggers executive approval routing.`
+                    : needsManagerApproval
+                    ? `Max discount (${maxDiscountPct}%) exceeds standard 10% rep threshold and routes to manager queue.`
+                    : `Discount rate (${maxDiscountPct}%) is auto-approved under standard rep policy.`}
                 </p>
               </div>
             )}
@@ -601,8 +737,28 @@ export const RepProductCatalog = () => {
               ></textarea>
             </div>
 
-            {/* Financial Totals Breakdown */}
+            {/* Financial Totals Breakdown & Hybrid Billing Split */}
             <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-2.5">
+              {/* Hybrid Billing Lines */}
+              {quoteItems.length > 0 && (
+                <div className="pb-2 border-b border-slate-800 space-y-1 text-[11px]">
+                  <div className="flex justify-between text-slate-300">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400"></span> Upfront Hardware Total:
+                    </span>
+                    <span className="font-bold">₹{upfrontNet.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  {recurringNet > 0 && (
+                    <div className="flex justify-between text-emerald-400">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Recurring Subscriptions (MRR):
+                      </span>
+                      <span className="font-bold">₹{recurringNet.toLocaleString(undefined, { maximumFractionDigits: 0 })}/mo</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-between text-xs text-slate-300">
                 <span>Subtotal Gross</span>
                 <span>₹{subtotal.toLocaleString()}</span>

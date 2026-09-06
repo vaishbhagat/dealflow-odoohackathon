@@ -228,6 +228,41 @@ export const CustomerCart = () => {
               <h3 className="font-black text-base text-slate-900">Quotation Summary</h3>
 
               <div className="space-y-3 text-xs border-b border-slate-100 pb-4">
+                {items.length > 0 && (() => {
+                  const isSubscriptionCategory = (catName) => {
+                    if (!catName) return false;
+                    const lower = catName.toLowerCase();
+                    return lower.includes('warranty') || lower.includes('amc') || lower.includes('service') || lower.includes('subscription');
+                  };
+                  
+                  const upfrontNet = items
+                    .filter((i) => !isSubscriptionCategory(i.category))
+                    .reduce((acc, i) => acc + parseFloat(i.lineTotal || 0), 0);
+                  
+                  const recurringNet = items
+                    .filter((i) => isSubscriptionCategory(i.category))
+                    .reduce((acc, i) => acc + parseFloat(i.lineTotal || 0), 0);
+
+                  return (
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-4 space-y-2">
+                      <div className="flex justify-between text-slate-600">
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-cyan-500"></span> Upfront Hardware Total:
+                        </span>
+                        <span className="font-bold text-slate-900">₹{upfrontNet.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                      </div>
+                      {recurringNet > 0 && (
+                        <div className="flex justify-between text-emerald-600">
+                          <span className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Recurring Subscriptions (MRR):
+                          </span>
+                          <span className="font-bold">₹{recurringNet.toLocaleString('en-IN', { maximumFractionDigits: 0 })}/mo</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="flex items-center justify-between text-slate-600">
                   <span>Subtotal ({summary.itemCount} items)</span>
                   <span className="font-semibold text-slate-900">₹{summary.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

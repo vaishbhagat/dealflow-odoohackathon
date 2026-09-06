@@ -76,66 +76,7 @@ export const Navbar = () => {
         </NavLink>
       </div>
 
-      {/* B1) Sales Workspace Top Menu Navigation & Actions */}
-      {isInternal && (
-        <div className="hidden lg:flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl border border-slate-200">
-          <NavLink
-            to="/sales/quotations"
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                isActive ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`
-            }
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Quotations</span>
-          </NavLink>
 
-          <NavLink
-            to="/sales/pipeline"
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                isActive ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`
-            }
-          >
-            <Kanban className="w-3.5 h-3.5" />
-            <span>Pipeline</span>
-          </NavLink>
-
-          <div className="h-4 w-px bg-slate-200 mx-1"></div>
-
-          {/* Action: Reload Data */}
-          <button
-            onClick={handleReloadData}
-            title="Reload live stock, pricing, and approvals from backend"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white hover:text-blue-700 rounded-lg transition-all"
-          >
-            <RotateCcw className={`w-3.5 h-3.5 ${reloading ? 'animate-spin text-blue-600' : ''}`} />
-            <span>{reloading ? 'Reloading...' : 'Reload Data'}</span>
-          </button>
-
-          {/* Action: Go to Back-end */}
-          <button
-            onClick={() => navigate('/admin/products')}
-            title="Open configuration, price lists, and discount rules"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white hover:text-indigo-700 rounded-lg transition-all"
-          >
-            <Settings className="w-3.5 h-3.5 text-slate-500" />
-            <span>Go to Back-end</span>
-          </button>
-
-          {/* Action: Close Workspace */}
-          <button
-            onClick={handleCloseWorkspace}
-            title="End current working session view"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-          >
-            <XCircle className="w-3.5 h-3.5" />
-            <span>Close Workspace</span>
-          </button>
-        </div>
-      )}
 
       {/* Right User Actions */}
       <div className="flex items-center gap-3">

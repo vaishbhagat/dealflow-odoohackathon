@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import api from "../../api/client";
 import {
@@ -10,6 +10,7 @@ import {
 export const AdminDashboard = () => {
   const [metrics, setMetrics] = useState(null);
   const [users, setUsers] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadData(); }, []);
@@ -17,12 +18,14 @@ export const AdminDashboard = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [rpt, usr] = await Promise.all([
+      const [rpt, usr, logs] = await Promise.all([
         api.get("/reports/dashboard").catch(() => ({ success: false })),
         api.get("/admin/users").catch(() => ({ success: false })),
+        api.get("/admin/audit-logs?limit=10").catch(() => ({ success: false })),
       ]);
       if (rpt.success) setMetrics(rpt.metrics);
       if (usr.success) setUsers(usr.users || []);
+      if (logs.success) setAuditLogs(logs.logs || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -35,6 +38,7 @@ export const AdminDashboard = () => {
     { name: "Price Lists", desc: "Tier pricing & discounts", icon: DollarSign, to: "/admin/price-lists", color: "from-amber-500 to-orange-500", count: null },
     { name: "Discount Rules", desc: "Governance & approval thresholds", icon: Sliders, to: "/admin/discount-rules", color: "from-violet-600 to-purple-600", count: null },
     { name: "Warehouses", desc: "Inventory & stock management", icon: Warehouse, to: "/admin/warehouses", color: "from-cyan-500 to-blue-500", count: null },
+    { name: "Upsell Rules", desc: "AI recommendation pairings", icon: Zap, to: "/admin/upsell-rules", color: "from-fuchsia-500 to-violet-600", count: null },
     { name: "Architecture", desc: "System design & data flow", icon: Globe, to: "/admin/architecture", color: "from-rose-500 to-pink-600", count: null },
   ];
 
@@ -163,28 +167,59 @@ export const AdminDashboard = () => {
               );
             })}
           </div>
+        </div>
+      </div>
 
-          {/* Recent Users */}
-          <div className="p-4 border-t border-slate-100">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Recent Users</p>
-            <div className="space-y-2">
-              {users.slice(0, 5).map(u => (
-                <div key={u.id} className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-[10px] font-black shrink-0">
-                    {(u.name || "U")[0]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-900 truncate">{u.name}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{u.email}</p>
-                  </div>
-                  <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md shrink-0">
-                    {(u.role || "").replace("_", " ")}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {/* Audit Log Feed */}
+      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
+        <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-slate-500" /> System Audit Log
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">Last 10 approval, edit, and status-change events with user, timestamp, and reason</p>
           </div>
         </div>
+        {auditLogs.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 text-xs">No audit log entries yet. Events will appear here as quotations are processed.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px] border-b border-slate-200">
+                <tr>
+                  <th className="py-3 px-4">Timestamp</th>
+                  <th className="py-3 px-4">User</th>
+                  <th className="py-3 px-3">Role</th>
+                  <th className="py-3 px-3">Action</th>
+                  <th className="py-3 px-3">Quotation</th>
+                  <th className="py-3 px-3">Reason</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {auditLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50/80">
+                    <td className="py-3 px-4 text-slate-500 font-mono text-[10px]">
+                      {new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                    </td>
+                    <td className="py-3 px-4 font-bold text-slate-900">{log.user_name || 'SYSTEM'}</td>
+                    <td className="py-3 px-3">
+                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">{log.user_role}</span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                        log.action?.includes('APPROVE') ? 'bg-emerald-50 text-emerald-700' :
+                        log.action?.includes('REJECT') ? 'bg-rose-50 text-rose-700' :
+                        'bg-blue-50 text-blue-700'
+                      }`}>{log.action}</span>
+                    </td>
+                    <td className="py-3 px-3 text-slate-500 font-mono">{log.quotation_number || '—'}</td>
+                    <td className="py-3 px-3 text-slate-500">{log.reason || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

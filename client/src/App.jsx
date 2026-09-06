@@ -17,7 +17,6 @@ import QuotationDetail from './pages/sales/QuotationDetail';
 import PipelineKanban from './pages/sales/PipelineKanban';
 import NegotiationsInbox from './pages/sales/NegotiationsInbox';
 import ApprovalTracker from './pages/sales/ApprovalTracker';
-import FollowUpsList from './pages/sales/FollowUpsList';
 import RepProductCatalog from './pages/sales/RepProductCatalog';
 import CustomersView from './pages/sales/CustomersView';
 
@@ -49,6 +48,7 @@ import DiscountRules from './pages/admin/DiscountRules';
 import WarehousesView from './pages/admin/WarehousesView';
 import UsersManagement from './pages/admin/UsersManagement';
 import ArchitecturePage from './pages/admin/ArchitecturePage';
+import UpsellRulesAdmin from './pages/admin/UpsellRulesAdmin';
 
 // Main Layout Shell
 const AppLayout = ({ children }) => {
@@ -157,14 +157,7 @@ export default function App() {
               </AppLayout>
             }
           />
-          <Route
-            path="/sales/follow-ups"
-            element={
-              <AppLayout>
-                <FollowUpsList />
-              </AppLayout>
-            }
-          />
+
 
           <Route
             path="/sales/products"
@@ -423,6 +416,14 @@ export default function App() {
             element={
               <AppLayout>
                 <UsersManagement />
+              </AppLayout>
+            }
+          />
+          <Route
+            path="/admin/upsell-rules"
+            element={
+              <AppLayout>
+                <UpsellRulesAdmin />
               </AppLayout>
             }
           />

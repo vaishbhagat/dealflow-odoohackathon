@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import api from "../../api/client";
 import {
@@ -208,7 +208,7 @@ export const SalesDashboard = () => {
           { to: "/sales/negotiations", label: "Negotiations Inbox", icon: Activity, color: "text-amber-600", bg: "bg-amber-50 border-amber-100", badge: null },
           { to: "/sales/approvals", label: "Approval Tracker", icon: ShieldAlert, color: "text-violet-600", bg: "bg-violet-50 border-violet-100", badge: metrics?.pendingApprovalCount },
           { to: "/sales/products", label: "Quote Builder", icon: Package, color: "text-blue-600", bg: "bg-blue-50 border-blue-100", badge: null },
-          { to: "/sales/follow-ups", label: "Follow-Up Tasks", icon: Calendar, color: "text-rose-600", bg: "bg-rose-50 border-rose-100", badge: null },
+          { to: "/sales/customers", label: "Customers Directory", icon: Calendar, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100", badge: null },
         ].map(({ to, label, icon: Icon, color, bg, badge }) => (
           <Link
             key={to}
@@ -417,7 +417,7 @@ export const SalesDashboard = () => {
               { to: "/sales/products", label: "Build a Quotation" },
               { to: "/sales/negotiations", label: "Check Negotiations" },
               { to: "/sales/approvals", label: "Track Approvals" },
-              { to: "/sales/follow-ups", label: "Follow-Up Tasks" },
+              { to: "/sales/pipeline", label: "View Deal Pipeline" },
             ].map(({ to, label }) => (
               <Link
                 key={to}
